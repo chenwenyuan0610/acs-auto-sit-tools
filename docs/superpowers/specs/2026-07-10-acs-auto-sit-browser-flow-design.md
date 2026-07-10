@@ -122,7 +122,16 @@ The first CReq is generated from ARes:
 - `acsTransID` from ARes
 - `challengeWindowSize` from the case setting, defaulting to `05`
 
-Later CReq messages are generated from the previous CRes plus case settings. V1 must keep this generation rule explicit and editable because some ACS flows require an action, OTP, resend choice, cancel choice, or other challenge data before the next CReq can be sent.
+Later CReq messages are generated from the previous CRes, the current challenge action, and case settings. V1 must keep this generation rule explicit and editable because ACS flows can require different next actions before the next CReq can be sent.
+
+Supported v1 challenge actions:
+
+- select a verification screen or verification method
+- submit a challenge value, where the challenge value can be an OTP
+- resend or request another challenge value, if represented by the ACS flow
+- cancel or abandon the challenge, if represented by the ACS flow
+
+Each action produces a CReq draft with the required standard fields plus action-specific data. The action-specific data remains configurable because the exact field shape may differ by ACS implementation.
 
 For each exchange:
 
@@ -157,7 +166,7 @@ The loop stops when:
 
 The default maximum exchange count is 5.
 
-If a later CReq cannot be generated automatically because the previous CRes requires user input or ACS-specific fields, the run enters a waiting state and shows the editable next-CReq draft in the simulator UI.
+If a later CReq cannot be generated automatically because the previous CRes requires user input or ACS-specific fields, the run enters a waiting state and shows the editable next-CReq draft in the simulator UI. Examples include choosing a verification screen or submitting an OTP challenge value.
 
 ### 5. Callback/Notification Capture
 
