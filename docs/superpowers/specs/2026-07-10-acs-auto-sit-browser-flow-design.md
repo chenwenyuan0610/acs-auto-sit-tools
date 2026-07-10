@@ -108,7 +108,7 @@ The backend extracts flow fields from ARes:
 - `transStatus`
 - `acsURL`, when present
 
-If `transStatus` is final, the run moves to validation. If `transStatus = "C"`, the backend creates a challenge session.
+Only `transStatus = "C"` starts a challenge session and causes the tool to generate CReq. Any other ARes `transStatus` is treated as non-challenge and moves the run to validation or failure handling.
 
 ### 4. Run CReq/CRes Loop
 
@@ -130,7 +130,7 @@ For each exchange:
 2. POST the CReq to the ACS challenge endpoint from ARes `acsURL`.
 3. Capture the HTTP response body as CRes.
 4. Parse CRes.
-5. Decide whether the challenge is complete.
+5. Continue only if CRes `transStatus = "C"` and the case settings can produce the next CReq. Any other CRes `transStatus` ends the CReq loop.
 
 The run stores challenge exchanges as an array:
 
@@ -149,7 +149,7 @@ The run stores challenge exchanges as an array:
 
 The loop stops when:
 
-- CRes has a final `transStatus`
+- CRes `transStatus` is anything other than `"C"`
 - CRes has `challengeCompletionInd = "Y"`
 - validation or parsing determines the challenge is complete
 - the maximum exchange count is reached
