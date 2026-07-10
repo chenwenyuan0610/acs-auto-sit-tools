@@ -114,6 +114,16 @@ If `transStatus` is final, the run moves to validation. If `transStatus = "C"`, 
 
 V1 treats challenge as a loop, not a single CReq.
 
+The first CReq is generated from ARes:
+
+- `messageType = "CReq"`
+- `messageVersion` from ARes, falling back to the AReq message version
+- `threeDSServerTransID` from ARes or the original AReq
+- `acsTransID` from ARes
+- `challengeWindowSize` from the case setting, defaulting to `05`
+
+Later CReq messages are generated from the previous CRes plus case settings. V1 must keep this generation rule explicit and editable because some ACS flows require an action, OTP, resend choice, cancel choice, or other challenge data before the next CReq can be sent.
+
 For each exchange:
 
 1. Generate a CReq draft using ARes and the previous CRes, if any.
@@ -146,6 +156,8 @@ The loop stops when:
 - a request error or timeout occurs
 
 The default maximum exchange count is 5.
+
+If a later CReq cannot be generated automatically because the previous CRes requires user input or ACS-specific fields, the run enters a waiting state and shows the editable next-CReq draft in the simulator UI.
 
 ### 5. Callback/Notification Capture
 
