@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ACS Auto SIT</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <h1>ACS Auto SIT</h1>
+        <p>3DS 瀏覽器 AReq / CReq POST 測試工具</p>
+      </div>
+      <div id="status" class="status-pill">待命</div>
+    </header>
+
+    <nav class="tab-bar" aria-label="Workspace tabs">
+      <button class="tab-button active" type="button" data-tab="manualRunner">手動交易</button>
+      <button class="tab-button" type="button" data-tab="sitRunner">SIT 測試</button>
+    </nav>
+
+    <main id="manualRunner" class="workspace tab-panel active">
+      <section class="panel input-panel">
+        <div class="toolbar">
+          <button id="sendAreq" class="primary" type="button">送出 AReq</button>
+          <button id="sendCreq" type="button" disabled>送出 CReq</button>
+        </div>
+
+        <label>
+          AReq URL
+          <input id="areqUrl" spellcheck="false" value="https://acscloud-test.hitrust-us.com/acs-auth-v3/auth/M/220/0c57e472-e555-2c0a-e7cf-2d6a2455fbc8/123/areq" />
+        </label>
+
+        <label>
+          CReq URL
+          <input id="creqUrl" spellcheck="false" placeholder="由 ARes acsURL 帶入，也可手動貼上" />
+        </label>
+
+        <div class="split">
+          <label>
+            HTTP 標頭
+            <textarea id="headers" spellcheck="false">{
+  "Content-Type": "application/json"
+}</textarea>
+          </label>
+          <label>
+            逾時秒數
+            <input id="timeoutSeconds" type="number" min="1" max="180" value="30" />
+          </label>
+        </div>
+
+        <div class="options-row">
+          <label class="check-label">
+            <input id="autoSelectSms" type="checkbox" checked />
+            自動選 SMS
+          </label>
+          <label class="check-label">
+            <input id="autoSubmitOtp" type="checkbox" checked />
+            自動送出 OTP
+          </label>
+          <label>
+            模擬 OTP
+            <input id="simulatedOtp" spellcheck="false" value="123456" />
+          </label>
+        </div>
+
+        <label>
+          AReq JSON
+          <textarea id="areqPayload" class="large" spellcheck="false">{
+  "messageType": "AReq",
+  "messageVersion": "2.2.0",
+  "messageExtension": [
+    {
+      "criticalityIndicator": false,
+      "data": {
+        "A000000004-merchantData": {
+          "acquirerCountryCode": "036"
+        }
+      },
+      "id": "A000000004-merchantData",
+      "name": "Merchant Data"
+    },
+    {
+      "criticalityIndicator": false,
+      "data": {
+        "A000000004-acsRBA": {
+          "status": "Success",
+          "decision": "Not Low Risk",
+          "score": "400",
+          "reasonCode1": "E",
+          "reasonCode2": "GG",
+          "enhancedDataValCode": "2"
+        }
+      },
+      "id": "A000000004-acsRBA",
+      "name": "ACS RBA"
+    }
+  ],
+  "threeDSServerTransID": "fb58fc38-5698-4388-b06f-5967f472bc55",
+  "threeDSCompInd": "N",
+  "threeDSRequestorAuthenticationInd": "01",
+  "threeDSRequestorChallengeInd": "04",
+  "threeDSRequestorID": "STR63427_UPZIQS3COLJNGJM",
+  "threeDSRequestorName": "ZOHO CORP PTY",
+  "threeDSRequestorURL": "https://www.zoho.com",
+  "threeDSServerRefNumber": "3DS_LOA_SER_STIN_020301_00948",
+  "threeDSServerOperatorID": "SVR-V210-STRIPE,_INC.-08905",
+  "threeDSServerURL": "https://3ds-mastercard-hooks-public.stripe.com/3d_secure_2/rreq/acct_1EO0TdAveE1MHGwe/tds2_VFZDb2xOMGN1YWtPQWFBdGRlTnVxSy1KZjZkd0ZyRXV6QWdiIThsejMzRSMSFwoVYWNjdF8xRU8wVGRBdmVFMU1IR3dl?cluster=northwest-6\u00d7tamp=1778058086&amp;merchant_region=northwest",
+  "acquirerBIN": "230230",
+  "acquirerMerchantID": "UPZIQS3COLJNGJM",
+  "deviceChannel": "02",
+  "browserAcceptHeader": "application/json",
+  "browserIP": "206.83.99.136",
+  "browserJavaEnabled": false,
+  "browserLanguage": "en-NZ",
+  "browserColorDepth": "24",
+  "browserScreenHeight": "1366",
+  "browserScreenWidth": "1024",
+  "browserTZ": "-720",
+  "browserUserAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.7.5 Safari/605.1.15",
+  "browserJavascriptEnabled": true,
+  "cardExpiryDate": "2902",
+  "acctInfo": {
+    "chAccAgeInd": "02",
+    "chAccDate": "20260506"
+  },
+  "acctNumber": "5678910000000000",
+  "billAddrCity": "Drury",
+  "billAddrCountry": "554",
+  "billAddrLine1": "327 Fitzgerald Road",
+  "billAddrPostCode": "2577",
+  "billAddrState": "AUK",
+  "cardholderName": "New =uards",
+  "dsReferenceNumber": "3DS_LOA_DIS_MAST_020301_00931",
+  "dsTransID": "d9bd01c3-a30b-4b8f-87ca-9b99635db531",
+  "dsURL": "http://172.58.1.100:8020/api-proxy/challenge/2.2.0/001/rreq",
+  "mcc": "5734",
+  "merchantCountryCode": "036",
+  "merchantName": "TEST ZOHO CORP PTY",
+  "messageCategory": "01",
+  "notificationURL": "https://hooks.stripe.com/3d_secure_2/notify/acct_1EO0TdAveE1MHGwe/tds2_VFZDb2xOMGN1YWtPQWFBdGRlTnVxSy1KZjZkd0ZyRXV6QWdiIThsejMzRSMSFwoVYWNjdF8xRU8wVGRBdmVFMU1IR3dl",
+  "purchaseAmount": "5520",
+  "purchaseCurrency": "554",
+  "purchaseExponent": "2",
+  "purchaseDate": "20260506090128",
+  "transType": "01"
+}</textarea>
+        </label>
+
+        <label>
+          CReq JSON
+          <textarea id="creqPayload" class="large" spellcheck="false"></textarea>
+        </label>
+      </section>
+
+      <section class="panel output-panel">
+        <div class="result-grid">
+          <label>
+            ARes
+            <textarea id="aresOutput" spellcheck="false" readonly></textarea>
+          </label>
+          <label>
+            CRes
+            <textarea id="cresOutput" spellcheck="false" readonly></textarea>
+          </label>
+          <label>
+            通知結果
+            <textarea id="notificationOutput" spellcheck="false" readonly></textarea>
+          </label>
+        </div>
+
+        <label>
+          HTTP 證據
+          <textarea id="evidenceOutput" class="evidence" spellcheck="false" readonly></textarea>
+        </label>
+      </section>
+    </main>
+
+    <main id="sitRunner" class="sit-workspace tab-panel">
+      <section class="panel case-panel">
+        <div class="toolbar">
+          <button id="runSelectedCases" class="primary" type="button">執行選取案例</button>
+          <button id="runAllCases" type="button">全部執行</button>
+        </div>
+        <div class="case-tools">
+          <label class="check-label">
+            <input id="selectAllCases" type="checkbox" />
+            全選
+          </label>
+          <span id="caseCount" class="case-count">0 個案例</span>
+        </div>
+        <div class="progress-box">
+          <strong>案例編寫進度</strong>
+          <span id="caseProgressSummary">尚未載入</span>
+        </div>
+        <div class="sit-options">
+          <label>
+            發卡行模式
+            <select id="issuerMode">
+              <option value="selection_sms_oob">有驗證選擇：SMS / OOB</option>
+              <option value="selection_sms_otp">有驗證選擇：選 SMS 進 OTP</option>
+              <option value="direct_otp">直接進 OTP</option>
+              <option value="direct_oob">直接進 OOB</option>
+              <option value="default_oob_can_switch_otp">預設 OOB，可切到 OTP</option>
+            </select>
+          </label>
+          <label>
+            優先驗證方式
+            <select id="preferredChallenge">
+              <option value="auto">自動</option>
+              <option value="sms">SMS</option>
+              <option value="oob">OOB</option>
+              <option value="otp">OTP</option>
+            </select>
+          </label>
+          <label>
+            OTP 來源
+            <select id="otpSourceMode">
+              <option value="customer_generated">客戶產生 / 客戶驗證</option>
+              <option value="acs_generated">ACS 產生 / ACS 驗證</option>
+            </select>
+          </label>
+          <label>
+            成功 OTP
+            <input id="successOtp" spellcheck="false" value="123456" />
+          </label>
+          <label>
+            失敗 OTP
+            <input id="failureOtp" spellcheck="false" value="000000" />
+          </label>
+        </div>
+        <div id="caseList" class="case-list"></div>
+      </section>
+
+      <section class="panel case-detail-panel">
+        <div class="detail-header">
+          <div>
+            <h2 id="caseTitle">選擇案例</h2>
+            <p id="caseSubtitle">瀏覽器 SIT 案例細節與執行結果</p>
+          </div>
+          <span id="caseStatus" class="case-status pending">待執行</span>
+        </div>
+        <div class="detail-grid">
+          <label>
+            步驟
+            <textarea id="caseStepsOutput" spellcheck="false" readonly></textarea>
+          </label>
+          <label>
+            預期結果
+            <textarea id="caseExpectedOutput" spellcheck="false" readonly></textarea>
+          </label>
+        </div>
+        <label>
+          執行細節
+          <textarea id="caseRunOutput" class="evidence" spellcheck="false" readonly></textarea>
+        </label>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

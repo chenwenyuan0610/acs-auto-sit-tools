@@ -1,0 +1,2425 @@
+{
+  "sourceWorkbook": "Pipay Cup ACS OTP Authentication Flows English Test Case@2026-06-29.xlsx",
+  "sheet": "Browser",
+  "caseCount": 50,
+  "cases": [
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case01",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "OTP transaction successful\nAuthorization check CAVV value - Correct",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Transaction Verification screen",
+        "Enter the correct verification code",
+        "Click <SUBMIT> button to complete verification"
+      ],
+      "expected": {
+        "messages": {
+          "CRes": {
+            "transStatus": "Y"
+          },
+          "RReq": {
+            "transStatus": "Y",
+            "eci": "05",
+            "cavv": "not_null"
+          }
+        },
+        "transactions": [],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "otp",
+          "challenge",
+          "rreq",
+          "pa"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case02",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "Verification code error - Successful Transaction",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Transaction Verification screen",
+        "Transaction Verification page, enter wrong verification code and click \"Submit\"",
+        "Enter the correct verification code, click \"Submit\" to complete the verification"
+      ],
+      "expected": {
+        "messages": {
+          "CRes": {
+            "transStatus": "Y"
+          },
+          "RReq": {
+            "transStatus": "Y",
+            "eci": "05",
+            "cavv": "not_null"
+          }
+        },
+        "transactions": [],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "challenge",
+          "rreq",
+          "pa"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case03",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "Verification code error - Exceeded maximum number of errors - initiate transaction again",
+      "testPoint": "CUP",
+      "steps": [
+        "First transaction:",
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Transaction Verification screen",
+        "Enter the wrong verification code",
+        "Click <SUBMIT>",
+        "Repeat steps 6~7 until the maximum number of errors is exceeded",
+        "Second transaction:",
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Transaction Verification screen",
+        "Enter the correct verification code",
+        "Click <SUBMIT>"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [
+          {
+            "label": "First transaction",
+            "messages": {
+              "CRes": {
+                "transStatus": "N"
+              },
+              "RReq": {
+                "transStatus": "N",
+                "transStatusReason": "19",
+                "eci": "null",
+                "cavv": "null"
+              }
+            }
+          },
+          {
+            "label": "Second transaction",
+            "messages": {
+              "CRes": {
+                "transStatus": "Y"
+              },
+              "RReq": {
+                "transStatus": "Y",
+                "eci": "05",
+                "cavv": "not_null"
+              }
+            }
+          }
+        ],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "challenge",
+          "rreq",
+          "retry",
+          "pa"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case04",
+      "system": "ACS 2.0",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "Don't enter verification code",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test (Demo web)",
+        "Enter the test card number and parameter values, then select 'PA' from the Message Category",
+        "Click <Pay Now>",
+        "Enter the Purchase Authentication screen",
+        "Enter the Transaction Verification screen",
+        "Don't enter verification code",
+        "Click the \"Submit\" button directly"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "Display prompt:",
+          "We just sent you a verification code to your mobile application or your number ******5666.",
+          "Merchant: HiTRUST EMV Demo Merchant",
+          "Amount: 1.00 TWD",
+          "Transaction time: 2026-06-29 03:48:16",
+          "Card number: ************2574",
+          "Incorrect verification code. You have 4 attempt(s) remaining."
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "ui_assertion",
+        "tags": [
+          "pa",
+          "prompt"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case05",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "Enter English verification code",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Transaction Verification screen",
+        "Enter English verification code, Click the <SUBMIT>button"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "Display prompt:",
+          "We just sent you a verification code to your mobile application or your number ******5666.",
+          "Merchant: HiTRUST EMV Demo Merchant",
+          "Amount: 1.00 TWD",
+          "Transaction time: 2026-06-29 03:48:16",
+          "Card number: ************2574",
+          "Incorrect verification code. You have 4 attempt(s) remaining."
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "ui_assertion",
+        "tags": [
+          "pa",
+          "prompt"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case06",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "Enter special symbols",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Enter the Transaction Verification screen",
+        "Enter special symbols, Click the <SUBMIT>button"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "Display prompt:",
+          "We just sent you a verification code to your mobile application or your number ******5666.",
+          "Merchant: HiTRUST EMV Demo Merchant",
+          "Amount: 1.00 TWD",
+          "Transaction time: 2026-06-29 03:48:16",
+          "Card number: ************2574",
+          "Incorrect verification code. You have 4 attempt(s) remaining."
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "ui_assertion",
+        "tags": [
+          "pa",
+          "prompt"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case07",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "Valid card - PA",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number, the parameter values are set as follows:",
+        "Message Category \"PA\"",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Transaction Verification screen",
+        "Enter the correct verification code",
+        "Click <SUBMIT>"
+      ],
+      "expected": {
+        "messages": {
+          "CRes": {
+            "transStatus": "Y"
+          },
+          "RReq": {
+            "transStatus": "Y",
+            "eci": "05",
+            "cavv": "not_null"
+          }
+        },
+        "transactions": [],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "challenge",
+          "rreq",
+          "pa"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case08",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "Invalid card - PA",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number, the parameter values are set as follows:",
+        "Message Category \"PA\"",
+        "Click <Pay Now>"
+      ],
+      "expected": {
+        "messages": {
+          "ARes": {
+            "transStatus": "N",
+            "transStatusReason": "08",
+            "eci": "null",
+            "cavv": "null"
+          }
+        },
+        "transactions": [],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "ares",
+          "invalid_card",
+          "pa"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case09",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "Valid card - NPA",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number, the parameter values are set as follows:",
+        "Message Category \"NPA\"",
+        "Click <Pay Now>",
+        "Enter the Transaction Verification page",
+        "Enter the correct verification code",
+        "Click <SUBMIT>"
+      ],
+      "expected": {
+        "messages": {
+          "CRes": {
+            "transStatus": "Y"
+          },
+          "RReq": {
+            "transStatus": "Y",
+            "eci": "05",
+            "cavv": "not_null"
+          }
+        },
+        "transactions": [],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "challenge",
+          "rreq",
+          "pa",
+          "npa"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case10",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "Invalid card - NPA",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number, the parameter values are set as follows:",
+        "Message Category \"NPA\"",
+        "Click <Pay Now>"
+      ],
+      "expected": {
+        "messages": {
+          "ARes": {
+            "transStatus": "N",
+            "transStatusReason": "08",
+            "eci": "null",
+            "cavv": "null"
+          }
+        },
+        "transactions": [],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "ares",
+          "invalid_card",
+          "pa",
+          "npa"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case11",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "Valid card - 3RI",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter test card number",
+        "The parameter values are set as follows:",
+        "Message Category \"NPA\"",
+        "Device Channel \" 3 = 3DS Requestor Initiated(3RI)\"",
+        "3DS Requestor Authentication Indicator \"01\"",
+        "3RI Indicator Indicator \"03 = Add card\"",
+        "Click <Pay Now>",
+        "PS.3RI Required condition: Message Category \"NPA\""
+      ],
+      "expected": {
+        "messages": {
+          "ARes": {
+            "transStatus": "Y",
+            "eci": "05",
+            "cavv": "not_null"
+          }
+        },
+        "transactions": [],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "ares",
+          "pa",
+          "npa",
+          "3ri"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case12",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "Invalid card - 3RI",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter an invalid test card number",
+        "The parameter values are set as follows:",
+        "Message Category \"NPA\"",
+        "Device Channel \" 3 = 3DS Requestor Initiated(3RI)\"",
+        "3DS Requestor Authentication Indicator \"01\"",
+        "3RI Indicator Indicator \"03 = Add card\"",
+        "Click <Pay Now>",
+        "PS.3RI Required condition: Message Category \"NPA\""
+      ],
+      "expected": {
+        "messages": {
+          "ARes": {
+            "transStatus": "N",
+            "transStatusReason": "08",
+            "eci": "null",
+            "cavv": "null"
+          }
+        },
+        "transactions": [],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "ares",
+          "invalid_card",
+          "pa",
+          "npa",
+          "3ri"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case13",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "Interrupt Challenge (close or refresh page)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Transaction Verification screen",
+        "Close or refresh Transaction Verification page"
+      ],
+      "expected": {
+        "messages": {
+          "ARes": {
+            "transStatus": "C"
+          },
+          "RReq": {
+            "transStatus": "N",
+            "transStatusReason": "14",
+            "eci": "null",
+            "cavv": "null"
+          }
+        },
+        "transactions": [],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "rreq",
+          "ares",
+          "pa"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case14",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "Cancel Transaction - Transaction Verification Page",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Transaction Verification screen",
+        "Click \"Cancel\" to exit verification"
+      ],
+      "expected": {
+        "messages": {
+          "CRes": {
+            "transStatus": "N"
+          },
+          "RReq": {
+            "transStatus": "N",
+            "transStatusReason": "01",
+            "eci": "null",
+            "cavv": "null"
+          }
+        },
+        "transactions": [],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "challenge",
+          "rreq",
+          "pa",
+          "cancel"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case15",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "Payment network is down",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the ACS 2.2-Admin",
+        "Go to the 【Issuer Parameter Management】 page and uncheck the payment network channel of CUP",
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [],
+        "errors": [
+          {
+            "code": "303",
+            "component": "A",
+            "description": "Access Denied, Invalid Endpoint",
+            "detail": "Issuer(issuer oid) does not support for Card Scheme(C)!"
+          }
+        ]
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "pa",
+          "error"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case16",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "The decimal places of the amount are consistent with the decimal places of the actual transaction amount",
+      "testPoint": "CUP",
+      "steps": [
+        "Open ACS 2.2 Admin and enter 【ISO currency management】",
+        "Set currency code amount Minor unit to 1",
+        "Open the website of the trading test - Demo web",
+        "Enter test card number, the exponent parameter value is set to\"1\"",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Transaction Verification screen",
+        "Enter the correct verification code",
+        "Click <SUBMIT> button to complete verification"
+      ],
+      "expected": {
+        "messages": {
+          "CRes": {
+            "transStatus": "Y"
+          },
+          "RReq": {
+            "transStatus": "Y",
+            "eci": "05",
+            "cavv": "not_null"
+          }
+        },
+        "transactions": [],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "challenge",
+          "rreq",
+          "pa",
+          "currency"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case17",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "The decimal places of the amount do not match the decimal places of the actual transaction amount",
+      "testPoint": "CUP",
+      "steps": [
+        "Open ACS 2.2 Admin and enter 【ISO currency management】",
+        "Set currency code amount Minor unit to 0",
+        "Open the website of the trading test - Demo web",
+        "Enter test card number, the exponent parameter value is set to\"1\"",
+        "Click <Pay Now>"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [],
+        "errors": [
+          {
+            "code": "304",
+            "description": "ISO code not valid",
+            "detail": "ISO code not valid - purchaseExponent!"
+          }
+        ]
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "pa",
+          "currency",
+          "error"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case18",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "Currency - US Dollar",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter test card number, Currency parameter value is set to\" 840 \"",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Transaction Verification screen",
+        "Enter the correct verification code",
+        "Click <SUBMIT> button to complete verification"
+      ],
+      "expected": {
+        "messages": {
+          "CRes": {
+            "transStatus": "Y"
+          },
+          "RReq": {
+            "transStatus": "Y",
+            "eci": "05",
+            "cavv": "not_null"
+          }
+        },
+        "transactions": [],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "challenge",
+          "rreq",
+          "pa",
+          "currency"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case19",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "Currency - Yuan Renminbi",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter test card number, Currency parameter value is set to\" 156 \"",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Transaction Verification screen",
+        "Enter the correct verification code",
+        "Click <SUBMIT> button to complete verification"
+      ],
+      "expected": {
+        "messages": {
+          "CRes": {
+            "transStatus": "Y"
+          },
+          "RReq": {
+            "transStatus": "Y",
+            "eci": "05",
+            "cavv": "not_null"
+          }
+        },
+        "transactions": [],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "challenge",
+          "rreq",
+          "pa",
+          "currency"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case20",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "Currency - Euro",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter test card number, Currency parameter value is set to\" 978 \"",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Transaction Verification screen",
+        "Enter the correct verification code",
+        "Click <SUBMIT> button to complete verification"
+      ],
+      "expected": {
+        "messages": {
+          "CRes": {
+            "transStatus": "Y"
+          },
+          "RReq": {
+            "transStatus": "Y",
+            "eci": "05",
+            "cavv": "not_null"
+          }
+        },
+        "transactions": [],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "challenge",
+          "rreq",
+          "pa",
+          "currency"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case21",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "Wrong currency code",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Enter the incorrect currency code(ex: '007')",
+        "Click <Pay Now>"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [],
+        "errors": [
+          {
+            "code": "304",
+            "component": "A",
+            "description": "ISO code not valid",
+            "detail": "ISO code not valid - purchaseCurrency!"
+          }
+        ]
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "pa",
+          "currency",
+          "error"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case22",
+      "system": "ACS 2.2",
+      "module": "Browser Transaction Verification Process",
+      "functionPoint": "Transaction timed out - other timeouts(Challenge not completed within 600 seconds.)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Transaction Verification screen",
+        "Transaction Verification page stuck to timeout"
+      ],
+      "expected": {
+        "messages": {
+          "RReq": {
+            "transStatus": "N",
+            "transStatusReason": "14"
+          }
+        },
+        "transactions": [],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "rreq",
+          "pa",
+          "timeout"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case23",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "PA Purchase Authentication(English)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title： Purchase Authentication",
+          "Page Content：",
+          "We just sent you a verification code to your mobile application or your number  ******0036.",
+          "Merchant: HiTRUST EMV Demo Merchant",
+          "Total amount: 10000.00 TWD",
+          "Transaction time: 2026-06-29 03:10:28",
+          "Card number: ************0164",
+          "Input Prompt: Enter verification code:",
+          "Submit OTP button: SUBMIT",
+          "Resend OTP button: RESEND CODE",
+          "Help Title: I didn't receive the code.",
+          "Help Content: help_text: For further questions, please contact our call center 093 988 983/089 988 983"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "otp",
+          "pa",
+          "resend"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case24",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "PA Purchase Authentication(Simplified Chinese)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title：交易验证",
+          "Page Content：",
+          "我们已将验证码发送到您的手机应用程序或号码 ******0036",
+          "商店: HiTRUST EMV Demo Merchant",
+          "购买金额: 10000.00 TWD",
+          "购买日期: 2026-06-29 03:16:48",
+          "卡号: ************0164",
+          "Input Prompt: 请输入验证码:",
+          "Submit OTP button: 提交",
+          "Resend OTP button: 重新获取验证码",
+          "Help Title: 收不到验证码？",
+          "Help Content: 如您有其他疑问，请致电我们的客服中心 093 988 983 / 089 988 983。"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "otp",
+          "pa"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case25",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "PA Purchase Authentication(Thai)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title：การยืนยันการซื้อ",
+          "Page Content：",
+          "เราเพิ่งส่งรหัสยืนยันไปยังแอปพลิเคชันมือถือของคุณหรือหมายเลข ******5666 ของคุณแล้ว.",
+          "ผู้ค้า: HiTRUST EMV Demo Merchant",
+          "ยอดรวมทั้งหมด: 1.00 TWD",
+          "วันที่/เวลาทำธุรกรรม: 2026-06-29 05:11:55",
+          "หมายเลขบัตร: ************2574",
+          "Input Prompt: กรอกรหัสยืนยัน:",
+          "Submit OTP button: ส่ง",
+          "Resend OTP button: ส่งรหัสอีกครั้ง",
+          "Help Title: ฉันไม่ได้รับรหัส.",
+          "Help Content: หากมีข้อสงสัยเพิ่มเติม กรุณาติดต่อศูนย์บริการลูกค้าของเรา 093 988 983/089 988 983"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "otp",
+          "pa"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case26",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "PA Purchase Authentication(Khmer)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title：ការផ្ទៀងផ្ទាត់ការទិញ",
+          "Page Content：",
+          "ពួកយើងទើបតែផ្ញើលេខកូដផ្ទៀងផ្ទាត់​ទៅកាន់កម្មវិធីទូរស័ព្ទរបស់អ្នក ឬក៏តាមលេខទូរស័ព្ទរបស់អ្នក ******5666 ។",
+          "ពាណិជ្ជករ: HiTRUST EMV Demo Merchant",
+          "ចំនួនទឹកប្រាក់សរុប: 1.00 TWD",
+          "កាលបរិច្ឆេទប្រតិបត្តិការ/ពេលវេលា: 2026-06-29 06:12:22",
+          "លេខកាត: ************2574",
+          "Input Prompt: បញ្ចូលលេខកូដផ្ទៀងផ្ទាត់:",
+          "Submit OTP button: បញ្ចូន",
+          "Resend OTP button: ផ្ញើលេខកូដឡើងវិញ",
+          "Help Title: ខ្ញុំមិនបានទទួលលេខកូដទេ។",
+          "Help Content: សំរាប់ការសាកសួរព័ត៌មានបន្ថែម, សូមជួយទំនាក់ទំនងមកកាន់ភ្នាក់ងារកណ្តាលរបស់ពួកយើងបានតាមរយៈលេខ ០៩៣​ ៩៨៨ ៩៨៣/០៨៩ ៩៨៨ ៩៨៣"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "otp",
+          "pa"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case27",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "NPA Purchase Authentication(English)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number, the parameter values are set as follows: Message Category \"NPA\"",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title： Account Verification",
+          "Page Content：",
+          "We just sent you a verification code to your mobile application or your number ******0036.",
+          "Merchant: HiTRUST EMV Demo Merchant",
+          "Transaction date: 2026-06-29 03:10:44",
+          "Card number: ************0164",
+          "Input Prompt: Enter verification code:",
+          "Submit OTP button: SUBMIT",
+          "Resend OTP button: RESEND CODE",
+          "Help Title: I didn't receive the code.",
+          "Help Content: help_text: For further questions, please contact our call center 093 988 983/089 988 983"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "otp",
+          "pa",
+          "npa",
+          "resend"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case28",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "NPA Purchase Authentication(Simplified Chinese)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number, the parameter values are set as follows: Message Category \"NPA\"",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title：持卡人验证",
+          "Page Content：",
+          "我们已将验证码发送到您的手机应用程序或号码 ******5666",
+          "商店: HiTRUST EMV Demo Merchant",
+          "购买日期: 2026-06-29 06:34:20",
+          "卡号: ************2574",
+          "Input Prompt: 请输入验证码:",
+          "Submit OTP button: 提交",
+          "Resend OTP button: 重新获取验证码",
+          "Help Title: 收不到验证码？",
+          "Help Content: 如您有其他疑问，请致电我们的客服中心 093 988 983 / 089 988 983。"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "otp",
+          "pa",
+          "npa"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case29",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "NPA Purchase Authentication(Thai)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number, the parameter values are set as follows: Message Category \"NPA\"",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title：การยืนยันการซื้อ",
+          "Page Content：",
+          "เราเพิ่งส่งรหัสยืนยันไปยังแอปพลิเคชันมือถือของคุณหรือหมายเลข ******5666 ของคุณแล้ว.",
+          "ชื่อผู้ค้า: HiTRUST EMV Demo Merchant",
+          "วันที่/เวลาทำรายการ: 2026-06-29 05:21:52",
+          "หมายเลขบัตร : ************2574",
+          "Input Prompt: กรอกรหัสยืนยัน:",
+          "Submit OTP button: ส่ง",
+          "Resend OTP button: ส่งรหัสอีกครั้ง",
+          "Help Title: ฉันไม่ได้รับรหัส.",
+          "Help Content: หากมีข้อสงสัยเพิ่มเติม กรุณาติดต่อศูนย์บริการลูกค้าของเรา 093 988 983/089 988 983"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "otp",
+          "pa",
+          "npa"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case30",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "NPA Purchase Authentication(Khmer)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number, the parameter values are set as follows: Message Category \"NPA\"",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title：ការផ្ទៀងផ្ទាត់គណនី",
+          "Page Content：",
+          "ពួកយើងទើបតែផ្ញើលេខកូដផ្ទៀងផ្ទាត់​ទៅកាន់កម្មវិធីទូរស័ព្ទរបស់អ្នក ឬតាមលេខទូរស័ព្ទរបស់អ្នក ******5666។",
+          "ពាណិជ្ជករ: HiTRUST EMV Demo Merchant",
+          "កាលបរិច្ឆេទប្រតិបត្តិការ/ពេលវេលា: 2026-06-29 06:15:37",
+          "លេខកាត: ************2574",
+          "Input Prompt: បញ្ចូលលេខកូដផ្ទៀងផ្ទាត់:",
+          "Submit OTP button: បញ្ចូន",
+          "Resend OTP button: ផ្ញើលេខកូដឡើងវិញ",
+          "Help Title: ខ្ញុំមិនបានទទួលលេខកូដទេ។",
+          "Help Content: សំរាប់ការសាកសួរព័ត៌មានបន្ថែម, សូមជួយទំនាក់ទំនងមកកាន់ភ្នាក់ងារកណ្តាលរបស់ពួកយើងបានតាមរយៈលេខ ០៩៣​ ៩៨៨ ៩៨៣/០៨៩ ៩៨៨ ៩៨៣"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "otp",
+          "pa",
+          "npa"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case31",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Incorrect OTP Authentication(English)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page",
+        "Enter the wrong verification code",
+        "Click <SUBMIT> button"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title： Purchase Authentication",
+          "Page Content：",
+          "We just sent you a verification code to your mobile application or your number ******0036.",
+          "Merchant: HiTRUST EMV Demo Merchant",
+          "Amount: 10000.00 TWD",
+          "Transaction time: 2026-06-29 03:11:01",
+          "Card number: ************0164",
+          "Incorrect verification code. You have 4 attempt(s) remaining.",
+          "Input Prompt: Enter verification code:",
+          "Submit OTP button: SUBMIT",
+          "Resend OTP button: RESEND CODE",
+          "Help Title: I didn't receive the code.",
+          "Help Content: help_text: For further questions, please contact our call center 093 988 983/089 988 983"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "otp",
+          "pa",
+          "resend"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case32",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Incorrect OTP Authentication(Simplified Chinese)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page",
+        "Enter the wrong verification code",
+        "Click <SUBMIT> button"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title：交易验证",
+          "Page Content：",
+          "我们已将验证码发送到您的手机应用程序或号码 ******0036",
+          "商店: HiTRUST EMV Demo Merchant",
+          "购买金额: 10000.00 TWD",
+          "购买日期: 2026-06-29 03:17:20",
+          "卡号: ************0164",
+          "您输入的验证码错误，尚可错误4次。",
+          "Input Prompt: 请输入验证码:",
+          "Submit OTP button: 提交",
+          "Resend OTP button: 重新获取验证码",
+          "Help Title: 收不到验证码？",
+          "Help Content: 如您有其他疑问，请致电我们的客服中心 093 988 983 / 089 988 983。"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "otp",
+          "pa"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case33",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Incorrect OTP Authentication(Thai)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page",
+        "Enter the wrong verification code",
+        "Click <SUBMIT> button"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title：การยืนยันการซื้อ",
+          "Page Content：",
+          "เราเพิ่งส่งรหัสยืนยันไปยังแอปพลิเคชันมือถือของคุณหรือหมายเลข ******5666 ของคุณแล้ว.",
+          "ผู้ค้า: HiTRUST EMV Demo Merchant",
+          "ยอดรวมทั้งหมด: 1.00 TWD",
+          "วันที่/เวลาทำธุรกรรม: 2026-06-29 05:11:55",
+          "หมายเลขบัตร: ************2574",
+          "รหัสยืนยันไม่ถูกต้อง คุณเหลือเวลาอีก 4 ครั้ง.",
+          "Input Prompt: กรอกรหัสยืนยัน:",
+          "Submit OTP button: ส่ง",
+          "Resend OTP button: ส่งรหัสอีกครั้ง",
+          "Help Title: ฉันไม่ได้รับรหัส.",
+          "Help Content: หากมีข้อสงสัยเพิ่มเติม กรุณาติดต่อศูนย์บริการลูกค้าของเรา 093 988 983/089 988 983"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "otp",
+          "pa"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case34",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Incorrect OTP Authentication(Khmer)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page",
+        "Enter the wrong verification code",
+        "Click <SUBMIT> button"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title：ការផ្ទៀងផ្ទាត់ការទិញ",
+          "Page Content：",
+          "ពួកយើងទើបតែផ្ញើលេខកូដផ្ទៀងផ្ទាត់​ទៅកាន់កម្មវិធីទូរស័ព្ទរបស់អ្នក ឬក៏តាមលេខទូរស័ព្ទរបស់អ្នក ******5666 ។",
+          "ពាណិជ្ជករ: HiTRUST EMV Demo Merchant",
+          "ចំនួនទឹកប្រាក់សរុប: 1.00 TWD",
+          "កាលបរិច្ឆេទប្រតិបត្តិការ/ពេលវេលា: 2026-06-29 06:12:22",
+          "លេខកាត: ************2574",
+          "លេខកូដផ្ទៀងផ្ទាត់មិនត្រឹមត្រូវទេ។ អ្នកនៅសល់ឳកាសសាកល្បងចំនួន 4 ដងទៀត។",
+          "Input Prompt: បញ្ចូលលេខកូដផ្ទៀងផ្ទាត់:",
+          "Submit OTP button: បញ្ចូន",
+          "Resend OTP button: ផ្ញើលេខកូដឡើងវិញ",
+          "Help Title: ខ្ញុំមិនបានទទួលលេខកូដទេ។",
+          "Help Content: សំរាប់ការសាកសួរព័ត៌មានបន្ថែម, សូមជួយទំនាក់ទំនងមកកាន់ភ្នាក់ងារកណ្តាលរបស់ពួកយើងបានតាមរយៈលេខ ០៩៣​ ៩៨៨ ៩៨៣/០៨៩ ៩៨៨ ៩៨៣"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "automatable",
+        "tags": [
+          "otp",
+          "pa"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case35",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Resend Code(English)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page",
+        "Click \"RESEND CODE\""
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title： Purchase Authentication",
+          "Page Content：",
+          "We just sent you a verification code to your mobile application or your number ******0036.",
+          "Merchant: HiTRUST EMV Demo Merchant",
+          "Amount: 10000.00 TWD",
+          "Transaction time: 2026-06-29 03:11:01",
+          "Card number: ************0164",
+          "Verification code was resend.",
+          "Input Prompt: Enter verification code:",
+          "Submit OTP button: SUBMIT",
+          "Resend OTP button: RESEND CODE",
+          "Help Title: I didn't receive the code.",
+          "Help Content: help_text: For further questions, please contact our call center 093 988 983/089 988 983"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "otp",
+          "pa",
+          "resend"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case36",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Resend Code(Simplified Chinese)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page",
+        "Click \"RESEND CODE\""
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title：交易验证",
+          "Page Content：",
+          "我们已将验证码发送到您的手机应用程序或号码 ******5666",
+          "商店: HiTRUST EMV Demo Merchant",
+          "购买金额: 1.00 TWD",
+          "购买日期: 2026-06-29 06:35:58",
+          "卡号: ************2574",
+          "验证码已重新发送。",
+          "Input Prompt: 请输入验证码:",
+          "Submit OTP button: 提交",
+          "Resend OTP button: 重新获取验证码",
+          "Help Title: 收不到验证码？",
+          "Help Content: 如您有其他疑问，请致电我们的客服中心 093 988 983 / 089 988 983。"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "otp",
+          "pa",
+          "resend"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case37",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Resend Code(Thai)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page",
+        "Click \"RESEND CODE\""
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title：การยืนยันการซื้อ",
+          "Page Content：",
+          "เราเพิ่งส่งรหัสยืนยันไปยังแอปพลิเคชันมือถือของคุณหรือหมายเลข ******5666 ของคุณแล้ว.",
+          "ผู้ค้า: HiTRUST EMV Demo Merchant",
+          "ยอดรวมทั้งหมด: 1.00 TWD",
+          "วันที่/เวลาทำธุรกรรม: 2026-06-29 05:11:55",
+          "หมายเลขบัตร: ************2574",
+          "รหัสยืนยันถูกส่งไปอีกครั้ง.",
+          "Input Prompt: กรอกรหัสยืนยัน:",
+          "Submit OTP button: ส่ง",
+          "Resend OTP button: ส่งรหัสอีกครั้ง",
+          "Help Title: ฉันไม่ได้รับรหัส.",
+          "Help Content: หากมีข้อสงสัยเพิ่มเติม กรุณาติดต่อศูนย์บริการลูกค้าของเรา 093 988 983/089 988 983"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "otp",
+          "pa",
+          "resend"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case38",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Resend Code(Khmer)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page",
+        "Click \"RESEND CODE\""
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title：ការផ្ទៀងផ្ទាត់ការទិញ",
+          "Page Content：",
+          "ពួកយើងទើបតែផ្ញើលេខកូដផ្ទៀងផ្ទាត់​ទៅកាន់កម្មវិធីទូរស័ព្ទរបស់អ្នក ឬក៏តាមលេខទូរស័ព្ទរបស់អ្នក ******5666 ។",
+          "ពាណិជ្ជករ: HiTRUST EMV Demo Merchant",
+          "ចំនួនទឹកប្រាក់សរុប: 1.00 TWD",
+          "កាលបរិច្ឆេទប្រតិបត្តិការ/ពេលវេលា: 2026-06-29 06:12:22",
+          "លេខកាត: ************2574",
+          "លេខកូដផ្ទៀងផ្ទាត់ត្រូវបានផ្ញើឡើងវិញ។",
+          "Input Prompt: បញ្ចូលលេខកូដផ្ទៀងផ្ទាត់:",
+          "Submit OTP button: បញ្ចូន",
+          "Resend OTP button: ផ្ញើលេខកូដឡើងវិញ",
+          "Help Title: ខ្ញុំមិនបានទទួលលេខកូដទេ។",
+          "Help Content: សំរាប់ការសាកសួរព័ត៌មានបន្ថែម, សូមជួយទំនាក់ទំនងមកកាន់ភ្នាក់ងារកណ្តាលរបស់ពួកយើងបានតាមរយៈលេខ ០៩៣​ ៩៨៨ ៩៨៣/០៨៩ ៩៨៨ ៩៨៣"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "otp",
+          "pa",
+          "resend"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case39",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Resend Code-Resend time not reached(English)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page",
+        "The Resend button starts counting down from 60 seconds, appears grayed out, and is unclickable."
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title： Purchase Authentication",
+          "Page Content：",
+          "We just sent you a verification code to your mobile application or your number  ******5666.",
+          "Merchant: HiTRUST EMV Demo Merchant",
+          "Total amount: 1.00 TWD",
+          "Transaction time: 2026-06-29 06:50:37",
+          "Card number: ************2574",
+          "Input Prompt: Enter verification code:",
+          "Submit OTP button: SUBMIT",
+          "Resend OTP button: RESEND CODE(14)",
+          "Help Title: I didn't receive the code.",
+          "Help Content: help_text: For further questions, please contact our call center 093 988 983/089 988 983"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "otp",
+          "pa",
+          "resend"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case40",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Resend Code-Resend time not reached(Simplified Chinese)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page",
+        "The Resend button starts counting down from 60 seconds, appears grayed out, and is unclickable."
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title：交易验证",
+          "Page Content：",
+          "我们已将验证码发送到您的手机应用程序或号码 ******5666",
+          "商店: HiTRUST EMV Demo Merchant",
+          "购买金额: 1.00 TWD",
+          "购买日期: 2026-06-29 06:35:58",
+          "卡号: ************2574",
+          "Input Prompt: 请输入验证码:",
+          "Submit OTP button: 提交",
+          "Resend OTP button: 重新获取验证码(10)",
+          "Help Title: 收不到验证码？",
+          "Help Content: 如您有其他疑问，请致电我们的客服中心 093 988 983 / 089 988 983。"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "otp",
+          "pa",
+          "resend"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case41",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Resend Code-Resend time not reached(Thai)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page",
+        "The Resend button starts counting down from 60 seconds, appears grayed out, and is unclickable."
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title：การยืนยันการซื้อ",
+          "Page Content：",
+          "เราเพิ่งส่งรหัสยืนยันไปยังแอปพลิเคชันมือถือของคุณหรือหมายเลข ******5666 ของคุณแล้ว.",
+          "ผู้ค้า: HiTRUST EMV Demo Merchant",
+          "ยอดรวมทั้งหมด: 1.00 TWD",
+          "วันที่/เวลาทำธุรกรรม: 2026-06-29 05:11:55",
+          "หมายเลขบัตร: ************2574",
+          "Input Prompt: กรอกรหัสยืนยัน:",
+          "Submit OTP button: ส่ง",
+          "Resend OTP button: ส่งรหัสอีกครั้ง(25)",
+          "Help Title: ฉันไม่ได้รับรหัส.",
+          "Help Content: หากมีข้อสงสัยเพิ่มเติม กรุณาติดต่อศูนย์บริการลูกค้าของเรา 093 988 983/089 988 983"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "otp",
+          "pa",
+          "resend"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case42",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Resend Code-Resend time not reached(Khmer)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page",
+        "The Resend button starts counting down from 60 seconds, appears grayed out, and is unclickable."
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title：ការផ្ទៀងផ្ទាត់ការទិញ",
+          "Page Content：",
+          "ពួកយើងទើបតែផ្ញើលេខកូដផ្ទៀងផ្ទាត់​ទៅកាន់កម្មវិធីទូរស័ព្ទរបស់អ្នក ឬក៏តាមលេខទូរស័ព្ទរបស់អ្នក ******5666 ។",
+          "ពាណិជ្ជករ: HiTRUST EMV Demo Merchant",
+          "ចំនួនទឹកប្រាក់សរុប: 1.00 TWD",
+          "កាលបរិច្ឆេទប្រតិបត្តិការ/ពេលវេលា: 2026-06-29 06:12:22",
+          "លេខកាត: ************2574",
+          "Input Prompt: បញ្ចូលលេខកូដផ្ទៀងផ្ទាត់:",
+          "Submit OTP button: បញ្ចូន",
+          "Resend OTP button: ផ្ញើលេខកូដឡើងវិញ(13)",
+          "Help Title: ខ្ញុំមិនបានទទួលលេខកូដទេ។",
+          "Help Content: សំរាប់ការសាកសួរព័ត៌មានបន្ថែម, សូមជួយទំនាក់ទំនងមកកាន់ភ្នាក់ងារកណ្តាលរបស់ពួកយើងបានតាមរយៈលេខ ០៩៣​ ៩៨៨ ៩៨៣/០៨៩ ៩៨៨ ៩៨៣"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "otp",
+          "pa",
+          "resend"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case43",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Resend Code-limit reached(English)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page",
+        "Click \"RESEND CODE\"",
+        "Click the<RESEND CODE> button again to enter the verification",
+        "Repeat step 9 until the maximum number of resends is reached"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "pa",
+          "resend"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case44",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Resend Code-limit reached(Simplified Chinese)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page",
+        "Click \"RESEND CODE\"",
+        "Click the<RESEND CODE> button again to enter the verification",
+        "Repeat step 9 until the maximum number of resends is reached"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "pa",
+          "resend"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case45",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Resend Code-limit reached(Thai)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page",
+        "Click \"RESEND CODE\"",
+        "Click the<RESEND CODE> button again to enter the verification",
+        "Repeat step 9 until the maximum number of resends is reached"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "pa",
+          "resend"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case46",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Resend Code-limit reached(Khmer)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication page",
+        "Click \"RESEND CODE\"",
+        "Click the<RESEND CODE> button again to enter the verification",
+        "Repeat step 9 until the maximum number of resends is reached"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "pa",
+          "resend"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case47",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Verification code expired(English)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication screen",
+        "After the verification code expires, enter the verification code on the Purchase Authentication page",
+        "Click <SUBMIT> button"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title： Purchase Authentication",
+          "Page Content：",
+          "We just sent you a verification code to your mobile application or your number ******0036.",
+          "Merchant: HiTRUST EMV Demo Merchant",
+          "Amount: 10000.00 TWD",
+          "Transaction time: 2026-06-29 03:11:01",
+          "Card number: ************0164",
+          "The verification code has expired, please get a new one.",
+          "Input Prompt: Enter verification code:",
+          "Submit OTP button: SUBMIT",
+          "Resend OTP button: RESEND CODE",
+          "Help Title: I didn't receive the code.",
+          "Help Content: help_text: For further questions, please contact our call center 093 988 983/089 988 983"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "otp",
+          "pa",
+          "resend",
+          "expired"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case48",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Verification code expired(Simplified Chinese)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication screen",
+        "After the verification code expires, enter the verification code on the Purchase Authentication page",
+        "Click <SUBMIT> button"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title：交易验证",
+          "Page Content：",
+          "我们已将验证码发送到您的手机应用程序或号码 ******0036",
+          "商店: HiTRUST EMV Demo Merchant",
+          "购买金额: 10000.00 TWD",
+          "购买日期: 2026-06-29 03:17:20",
+          "卡号: ************0164",
+          "密码已逾时，请重新取得密码",
+          "Input Prompt: 请输入验证码:",
+          "Submit OTP button: 提交",
+          "Resend OTP button: 重新获取验证码",
+          "Help Title: 收不到验证码？",
+          "Help Content: 如您有其他疑问，请致电我们的客服中心 093 988 983 / 089 988 983。"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "otp",
+          "pa",
+          "expired"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case49",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Verification code expired(Thai)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication screen",
+        "After the verification code expires, enter the verification code on the Purchase Authentication page",
+        "Click <SUBMIT> button"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title：การยืนยันการซื้อ",
+          "Page Content：",
+          "เราเพิ่งส่งรหัสยืนยันไปยังแอปพลิเคชันมือถือของคุณหรือหมายเลข ******5666 ของคุณแล้ว.",
+          "ผู้ค้า: HiTRUST EMV Demo Merchant",
+          "ยอดรวมทั้งหมด: 1.00 TWD",
+          "วันที่/เวลาทำธุรกรรม: 2026-06-29 05:11:55",
+          "หมายเลขบัตร: ************2574",
+          "รหัสตรวจสอบหมดอายุ กรุณารับรหัสใหม่.",
+          "Input Prompt: กรอกรหัสยืนยัน:",
+          "Submit OTP button: ส่ง",
+          "Resend OTP button: ส่งรหัสอีกครั้ง",
+          "Help Title: ฉันไม่ได้รับรหัส.",
+          "Help Content: หากมีข้อสงสัยเพิ่มเติม กรุณาติดต่อศูนย์บริการลูกค้าของเรา 093 988 983/089 988 983"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "otp",
+          "pa",
+          "expired"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    },
+    {
+      "sheet": "Browser",
+      "channel": "browser",
+      "id": "case50",
+      "system": "ACS 2.2",
+      "module": "UI authentication",
+      "functionPoint": "Verification code expired(Khmer)",
+      "testPoint": "CUP",
+      "steps": [
+        "Open the website of the trading test - Demo web",
+        "Enter the test card number",
+        "Click <Pay Now>",
+        "Display the corresponding language according to the browser language",
+        "Enter the Purchase Authentication screen",
+        "After the verification code expires, enter the verification code on the Purchase Authentication page",
+        "Click <SUBMIT> button"
+      ],
+      "expected": {
+        "messages": {},
+        "transactions": [],
+        "prompts": [
+          "UI and page format display correctly",
+          "Title：ការផ្ទៀងផ្ទាត់ការទិញ",
+          "Page Content：",
+          "ពួកយើងទើបតែផ្ញើលេខកូដផ្ទៀងផ្ទាត់​ទៅកាន់កម្មវិធីទូរស័ព្ទរបស់អ្នក ឬក៏តាមលេខទូរស័ព្ទរបស់អ្នក ******5666 ។",
+          "ពាណិជ្ជករ: HiTRUST EMV Demo Merchant",
+          "ចំនួនទឹកប្រាក់សរុប: 1.00 TWD",
+          "កាលបរិច្ឆេទប្រតិបត្តិការ/ពេលវេលា: 2026-06-29 06:12:22",
+          "លេខកាត: ************2574",
+          "លេខកូដផ្ទៀងផ្ទាត់បានផុតកំណត់, សូមទទួលយកលេខកូដថ្មីមួយទៀត។",
+          "Input Prompt: បញ្ចូលលេខកូដផ្ទៀងផ្ទាត់:",
+          "Submit OTP button: បញ្ចូន",
+          "Resend OTP button: ផ្ញើលេខកូដឡើងវិញ(13)",
+          "Help Title: ខ្ញុំមិនបានទទួលលេខកូដទេ។",
+          "Help Content: សំរាប់ការសាកសួរព័ត៌មានបន្ថែម, សូមជួយទំនាក់ទំនងមកកាន់ភ្នាក់ងារកណ្តាលរបស់ពួកយើងបានតាមរយៈលេខ ០៩៣​ ៩៨៨ ៩៨៣/០៨៩ ៩៨៨ ៩៨៣"
+        ],
+        "errors": []
+      },
+      "automation": {
+        "status": "manual_or_slow",
+        "tags": [
+          "otp",
+          "pa",
+          "expired"
+        ]
+      },
+      "source": {
+        "actualResult": "Pass",
+        "testDate": "2026-06-29",
+        "testers": "Sasha",
+        "remarks": ""
+      }
+    }
+  ]
+}
