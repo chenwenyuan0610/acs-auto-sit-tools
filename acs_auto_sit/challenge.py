@@ -30,9 +30,11 @@ class ChallengeHtmlParser(html.parser.HTMLParser):
         super().__init__()
         self.forms: list[dict[str, str]] = []
         self.inputs: list[dict[str, str]] = []
+        self.buttons: list[dict[str, str]] = []
         self.labels: list[dict[str, Any]] = []
         self.text_chunks: list[str] = []
         self._label: dict[str, Any] | None = None
+        self._button: dict[str, str] | None = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         data = {key: value or "" for key, value in attrs}
@@ -40,6 +42,10 @@ class ChallengeHtmlParser(html.parser.HTMLParser):
             self.forms.append(data)
         elif tag == "input":
             self.inputs.append(data)
+        elif tag == "button":
+            data["text"] = ""
+            self.buttons.append(data)
+            self._button = data
         elif tag == "label":
             self._label = {"attrs": data, "text": ""}
             self.labels.append(self._label)
@@ -47,6 +53,8 @@ class ChallengeHtmlParser(html.parser.HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if tag == "label":
             self._label = None
+        elif tag == "button":
+            self._button = None
 
     def handle_data(self, data: str) -> None:
         text = " ".join(data.split())
@@ -55,6 +63,8 @@ class ChallengeHtmlParser(html.parser.HTMLParser):
         self.text_chunks.append(text)
         if self._label is not None:
             self._label["text"] += text
+        if self._button is not None:
+            self._button["text"] += text
 
 
 def parse_challenge_page(html: str, source_url: str) -> dict[str, Any]:
@@ -86,7 +96,8 @@ def parse_challenge_page(html: str, source_url: str) -> dict[str, Any]:
     ]
 
     fields = _form_fields(parser.inputs)
-    available_actions = _available_actions(fields)
+    action_controls = _action_controls(parser.inputs, parser.buttons)
+    available_actions = _available_actions(fields, action_controls)
 
     return {
         "title": _title(html),
@@ -94,6 +105,7 @@ def parse_challenge_page(html: str, source_url: str) -> dict[str, Any]:
         "formAction": urljoin(source_url, action),
         "formMethod": (form.get("method") or "POST").upper(),
         "fields": fields,
+        "actionControls": action_controls,
         "radioOptions": radio_options,
         "textInputs": text_inputs,
         "availableActions": available_actions,
@@ -119,11 +131,12 @@ def _page_type(
     return "html"
 
 
-def _available_actions(fields: dict[str, str]) -> dict[str, bool]:
+def _available_actions(fields: dict[str, str], action_controls: list[dict[str, str]]) -> dict[str, bool]:
     switch_fields = {"switchauthm", "switchAuthm", "switchToOtp", "switchToOTP", "isForceOTP"}
     return {
         "oobContinue": "oobContinue" in fields,
         "switchToOtp": any(name in fields for name in switch_fields),
+        "resendOtp": _has_resend_control(fields, action_controls),
     }
 
 
@@ -136,6 +149,55 @@ def _form_fields(inputs: list[dict[str, str]]) -> dict[str, str]:
             continue
         fields[name] = item.get("value", "")
     return fields
+
+
+def _action_controls(inputs: list[dict[str, str]], buttons: list[dict[str, str]]) -> list[dict[str, str]]:
+    controls: list[dict[str, str]] = []
+    for item in inputs:
+        input_type = item.get("type", "")
+        if input_type not in {"submit", "button"}:
+            continue
+        controls.append(
+            {
+                "name": item.get("name", ""),
+                "id": item.get("id", ""),
+                "value": item.get("value", ""),
+                "type": input_type,
+                "text": "",
+            }
+        )
+    for item in buttons:
+        controls.append(
+            {
+                "name": item.get("name", ""),
+                "id": item.get("id", ""),
+                "value": item.get("value", ""),
+                "type": item.get("type", "button"),
+                "text": item.get("text", ""),
+            }
+        )
+    return controls
+
+
+def _has_resend_control(fields: dict[str, str], action_controls: list[dict[str, str]]) -> bool:
+    resend_terms = (
+        "resend",
+        "重新获取验证码",
+        "ส่งรหัสอีกครั้ง",
+        "ផ្ញើលេខកូដឡើងវិញ",
+    )
+    field_blob = " ".join(fields.keys()).lower()
+    if "resend" in field_blob:
+        return True
+    for control in action_controls:
+        text = " ".join(
+            str(control.get(key, ""))
+            for key in ("name", "id", "value", "text")
+        )
+        lower_text = text.lower()
+        if any(term in lower_text or term in text for term in resend_terms):
+            return True
+    return False
 
 
 def _first_input_value(inputs: list[dict[str, str]], name: str) -> str | None:

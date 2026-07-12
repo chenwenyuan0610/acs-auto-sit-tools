@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import time
 from copy import deepcopy
 from datetime import datetime, timezone
 from http import HTTPStatus
@@ -138,11 +139,13 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
             raise ValueError("mode must be dryRun or live.")
 
         if mode == "dryRun":
+            results = dry_run_cases(case_ids)
             self._json_response(
                 {
                     "ok": True,
                     "mode": mode,
-                    "results": dry_run_cases(case_ids),
+                    "summary": _summarize_sit_results(results),
+                    "results": results,
                 }
             )
             return
@@ -153,19 +156,21 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
         if not isinstance(transaction, dict):
             raise ValueError("transaction must be a JSON object.")
 
+        results = _run_live_sit_cases(
+            case_ids,
+            transaction,
+            _local_notification_url(self),
+            issuer_mode,
+            preferred_challenge,
+        )
         self._json_response(
             {
                 "ok": True,
                 "mode": mode,
                 "issuerMode": issuer_mode,
                 "preferredChallenge": preferred_challenge,
-                "results": _run_live_sit_cases(
-                    case_ids,
-                    transaction,
-                    _local_notification_url(self),
-                    issuer_mode,
-                    preferred_challenge,
-                ),
+                "summary": _summarize_sit_results(results),
+                "results": results,
             }
         )
 
@@ -246,11 +251,69 @@ def _read_transaction_envelope(envelope: dict[str, Any]) -> tuple[str, dict[str,
     return url, {str(key): str(value) for key, value in headers.items()}, payload, timeout_seconds
 
 
+def _post_areq_with_retries(
+    url: str,
+    headers: dict[str, str],
+    payload: Any,
+    notification_url: str,
+    timeout_seconds: int,
+    max_attempts: int = 5,
+) -> tuple[Any, Any, str | None, list[dict[str, Any]]]:
+    attempts: list[dict[str, Any]] = []
+    original_notification_url: str | None = None
+    current_payload: Any = payload
+    http: Any = None
+    for attempt in range(1, max_attempts + 1):
+        current_payload = _with_fresh_transaction_ids(payload)
+        current_payload, original_notification_url = _with_local_notification_url(current_payload, notification_url)
+        http = post_payload(url, current_payload, headers=headers, timeout_seconds=timeout_seconds)
+        attempts.append(http.to_dict())
+        ares = http.response_json if isinstance(http.response_json, dict) else None
+        if not _is_transient_slow_backend_error(ares) or attempt >= max_attempts:
+            return http, current_payload, original_notification_url, attempts
+        time.sleep(float(2 ** (attempt - 1)))
+    return http, current_payload, original_notification_url, attempts
+
+
+def _is_transient_slow_backend_error(ares: Any) -> bool:
+    if not isinstance(ares, dict):
+        return False
+    if str(ares.get("messageType") or "") != "Erro":
+        return False
+    if str(ares.get("errorCode") or "") != "403":
+        return False
+    text = " ".join(
+        str(ares.get(key) or "")
+        for key in ("errorDescription", "errorDetail")
+    ).lower()
+    return "slowly processing" in text or "transient system failure" in text
+
+
+def _is_acs_error(message: Any) -> bool:
+    return isinstance(message, dict) and str(message.get("messageType") or "") == "Erro"
+
+
+def _acs_error_reason(message: Any) -> str:
+    if not isinstance(message, dict):
+        return "ACS error response was not available."
+
+    code = str(message.get("errorCode") or "").strip() or "unknown"
+    description = str(message.get("errorDescription") or "").strip()
+    detail = str(message.get("errorDetail") or "").strip()
+    parts = [part for part in (description, detail) if part]
+    suffix = f": {' - '.join(parts)}" if parts else "."
+    return f"ACS Erro {code}{suffix}"
+
+
 def _run_areq_flow(envelope: dict[str, Any], notification_url: str) -> dict[str, Any]:
     url, headers, payload, timeout_seconds = _read_transaction_envelope(envelope)
-    payload = _with_fresh_transaction_ids(payload)
-    payload, original_notification_url = _with_local_notification_url(payload, notification_url)
-    http = post_payload(url, payload, headers=headers, timeout_seconds=timeout_seconds)
+    http, payload, original_notification_url, http_attempts = _post_areq_with_retries(
+        url,
+        headers,
+        payload,
+        notification_url,
+        timeout_seconds,
+    )
 
     ares = http.response_json if isinstance(http.response_json, dict) else None
     creq_draft = None
@@ -277,6 +340,8 @@ def _run_areq_flow(envelope: dict[str, Any], notification_url: str) -> dict[str,
                     preferred_challenge=resolve_preferred_challenge(str(envelope.get("preferredChallenge") or "")),
                     otp_attempts=_read_otp_attempts(envelope),
                     otp_settings=_read_otp_settings(envelope),
+                    challenge_action=str(envelope.get("challengeAction") or ""),
+                    resend_max_attempts=int(envelope.get("resendMaxAttempts") or 10),
                 )
         except ValueError as exc:
             draft_error = str(exc)
@@ -285,6 +350,7 @@ def _run_areq_flow(envelope: dict[str, Any], notification_url: str) -> dict[str,
         "ok": http.error is None,
         "error": http.error,
         "http": http.to_dict(),
+        "httpAttempts": http_attempts,
         "ares": ares,
         "extracted": extract_acs_values(ares),
         "challengeRequired": requires_challenge(ares),
@@ -306,8 +372,12 @@ def _run_live_sit_cases(
 ) -> list[dict[str, Any]]:
     cases = browser_cases_by_id()
     results: list[dict[str, Any]] = []
+    case_delay_seconds = _read_case_delay_seconds(transaction)
 
-    for case_id in case_ids:
+    for index, case_id in enumerate(case_ids):
+        if index > 0 and case_delay_seconds > 0:
+            time.sleep(case_delay_seconds)
+
         case = cases.get(case_id)
         if not case:
             results.append(
@@ -321,9 +391,11 @@ def _run_live_sit_cases(
             )
             continue
 
+        case_transaction = _transaction_for_case(case, transaction)
         skip_reason = live_skip_reason(case)
         case_plan = _case_plan_for_issuer_mode(case, issuer_mode["id"])
-        if skip_reason and case_plan is None:
+        case_areq = _case_areq_record(case_id, case_transaction)
+        if skip_reason:
             results.append(
                 {
                     "caseId": case_id,
@@ -335,16 +407,18 @@ def _run_live_sit_cases(
                         "automation": case.get("automation", {}),
                         "issuerMode": issuer_mode,
                         "preferredChallenge": preferred_challenge,
+                        "casePlan": case_plan,
+                        "caseAreq": case_areq,
                     },
                 }
             )
             continue
 
         envelope = {
-            **transaction,
+            **case_transaction,
             "autoSelectSms": True,
             "autoSubmitOtp": True,
-            "simulatedOtp": str(transaction.get("simulatedOtp") or "123456"),
+            "simulatedOtp": str(case_transaction.get("simulatedOtp") or "123456"),
             "issuerMode": issuer_mode["id"],
             "preferredChallenge": preferred_challenge,
         }
@@ -356,11 +430,99 @@ def _run_live_sit_cases(
             ]
             if not envelope["otpAttempts"]:
                 envelope["autoSubmitOtp"] = False
+            if any(action.get("type") == "cancel_challenge" for action in case_plan.get("actions", [])):
+                envelope["challengeAction"] = "cancel"
+                envelope["autoSubmitOtp"] = False
+            if any(action.get("type") == "resend_otp" for action in case_plan.get("actions", [])):
+                envelope["challengeAction"] = "resend"
+                envelope["autoSubmitOtp"] = False
+            if any(action.get("type") == "resend_until_limit" for action in case_plan.get("actions", [])):
+                envelope["challengeAction"] = "resend_limit"
+                envelope["resendMaxAttempts"] = 10
+                envelope["autoSubmitOtp"] = False
+
+        if (case.get("expected", {}) or {}).get("transactions"):
+            results.append(
+                _run_transaction_case(
+                    case_id,
+                    case,
+                    case_plan,
+                    envelope,
+                    notification_url,
+                    issuer_mode,
+                    preferred_challenge,
+                    case_areq,
+                )
+            )
+            continue
+
+        if (case.get("expected", {}) or {}).get("prompts"):
+            results.append(
+                _run_prompt_case(
+                    case_id,
+                    case,
+                    case_plan,
+                    envelope,
+                    notification_url,
+                    issuer_mode,
+                    preferred_challenge,
+                    case_areq,
+                )
+            )
+            continue
+
+        if (case.get("expected", {}) or {}).get("errors"):
+            results.append(
+                _run_error_case(
+                    case_id,
+                    case,
+                    case_plan,
+                    envelope,
+                    notification_url,
+                    issuer_mode,
+                    preferred_challenge,
+                    case_areq,
+                )
+            )
+            continue
+
+        if any(action.get("type") == "resend_until_limit" for action in (case_plan or {}).get("actions", [])):
+            results.append(
+                _run_resend_limit_case(
+                    case_id,
+                    case,
+                    case_plan,
+                    envelope,
+                    notification_url,
+                    issuer_mode,
+                    preferred_challenge,
+                    case_areq,
+                )
+            )
+            continue
 
         run_result = _run_areq_flow(envelope, notification_url)
+        case_areq["actualRequestBody"] = (
+            ((run_result.get("http") or {}).get("request_body"))
+            if isinstance(run_result.get("http"), dict)
+            else None
+        )
+        expected_messages = case.get("expected", {}).get("messages", {})
+        if "ARes" in expected_messages and "CRes" not in expected_messages:
+            results.append(
+                _ares_only_result(
+                    case_id,
+                    case,
+                    case_plan,
+                    case_areq,
+                    run_result,
+                    issuer_mode,
+                    preferred_challenge,
+                )
+            )
+            continue
         expected_status = (
-            case.get("expected", {})
-            .get("messages", {})
+            expected_messages
             .get("CRes", {})
             .get("transStatus")
         )
@@ -368,21 +530,27 @@ def _run_live_sit_cases(
         actual_status = cres.get("transStatus") if isinstance(cres, dict) else None
         passed = run_result.get("ok") is True and expected_status == actual_status
         status = "pass" if passed else "fail"
+        reason = (
+            f"CRes transStatus matched {expected_status}."
+            if passed
+            else (
+                _acs_error_reason(run_result.get("ares"))
+                if _is_acs_error(run_result.get("ares"))
+                else _expected_actual_reason("CRes transStatus", expected_status, actual_status)
+            )
+        )
         results.append(
             {
                 "caseId": case_id,
                 "status": status,
-                "reason": (
-                    f"CRes transStatus matched {expected_status}."
-                    if passed
-                    else f"Expected CRes transStatus {expected_status}, got {actual_status}."
-                ),
+                "reason": reason,
                 "case": case,
                 "details": {
                     "expected": case.get("expected", {}),
                     "issuerMode": issuer_mode,
                     "preferredChallenge": preferred_challenge,
                     "casePlan": case_plan,
+                    "caseAreq": case_areq,
                     "ares": run_result.get("ares"),
                     "cres": cres,
                     "notification": _notification_from_auto_creq(run_result.get("autoCreq")),
@@ -395,6 +563,545 @@ def _run_live_sit_cases(
         )
 
     return results
+
+
+def _ares_only_result(
+    case_id: str,
+    case: dict[str, Any],
+    case_plan: dict[str, Any] | None,
+    case_areq: dict[str, Any],
+    run_result: dict[str, Any],
+    issuer_mode: dict[str, Any],
+    preferred_challenge: str,
+) -> dict[str, Any]:
+    expected_ares = (
+        case.get("expected", {})
+        .get("messages", {})
+        .get("ARes", {})
+    )
+    actual_ares = run_result.get("ares") if isinstance(run_result.get("ares"), dict) else {}
+    keys = ["transStatus", "transStatusReason"]
+    mismatches = {
+        key: {"expected": expected_ares.get(key), "actual": actual_ares.get(key)}
+        for key in keys
+        if expected_ares.get(key) is not None and expected_ares.get(key) != actual_ares.get(key)
+    }
+    passed = run_result.get("ok") is True and not mismatches
+    reason = (
+        "ARes matched expected values."
+        if passed
+        else (
+            _acs_error_reason(actual_ares)
+            if _is_acs_error(actual_ares)
+            else f"ARes mismatched values: {mismatches}."
+        )
+    )
+    return {
+        "caseId": case_id,
+        "status": "pass" if passed else "fail",
+        "reason": reason,
+        "case": case,
+        "details": {
+            "expected": case.get("expected", {}),
+            "issuerMode": issuer_mode,
+            "preferredChallenge": preferred_challenge,
+            "casePlan": case_plan,
+            "caseAreq": case_areq,
+            "ares": actual_ares,
+            "cres": None,
+            "aresMismatches": mismatches,
+            "http": {
+                "areq": run_result.get("http"),
+            },
+            "error": run_result.get("error") or run_result.get("draftError"),
+        },
+    }
+
+
+def _run_error_case(
+    case_id: str,
+    case: dict[str, Any],
+    case_plan: dict[str, Any] | None,
+    envelope: dict[str, Any],
+    notification_url: str,
+    issuer_mode: dict[str, Any],
+    preferred_challenge: str,
+    case_areq: dict[str, Any],
+) -> dict[str, Any]:
+    envelope = {**envelope, "autoSubmitOtp": False}
+    run_result = _run_areq_flow(envelope, notification_url)
+    case_areq["actualRequestBody"] = (
+        ((run_result.get("http") or {}).get("request_body"))
+        if isinstance(run_result.get("http"), dict)
+        else None
+    )
+    expected_error = ((case.get("expected", {}) or {}).get("errors") or [{}])[0]
+    actual_error_source = _actual_error_source(run_result)
+    missing = _missing_error_fields(expected_error, actual_error_source)
+    passed = run_result.get("ok") is True and not missing
+    return {
+        "caseId": case_id,
+        "status": "pass" if passed else "fail",
+        "reason": (
+            "Expected error fields were found."
+            if passed
+            else f"Missing expected error fields: {missing}."
+        ),
+        "case": case,
+        "details": {
+            "expected": case.get("expected", {}),
+            "issuerMode": issuer_mode,
+            "preferredChallenge": preferred_challenge,
+            "casePlan": case_plan,
+            "caseAreq": case_areq,
+            "errorMatch": {
+                "expected": expected_error,
+                "actual": actual_error_source,
+                "missing": missing,
+            },
+            "ares": run_result.get("ares"),
+            "cres": None,
+            "http": {
+                "areq": run_result.get("http"),
+            },
+            "error": run_result.get("error") or run_result.get("draftError"),
+        },
+    }
+
+
+def _actual_error_source(run_result: dict[str, Any]) -> Any:
+    ares = run_result.get("ares")
+    if ares:
+        return ares
+    http = run_result.get("http")
+    if isinstance(http, dict):
+        return http.get("response_json") or http.get("response_text") or http.get("error")
+    return run_result.get("error")
+
+
+def _missing_error_fields(expected_error: dict[str, Any], actual_error_source: Any) -> list[str]:
+    haystack = json.dumps(actual_error_source, ensure_ascii=False) if not isinstance(actual_error_source, str) else actual_error_source
+    field_aliases = {
+        "code": ("errorCode", "code"),
+        "description": ("errorDescription", "description"),
+        "detail": ("errorDetail", "detail"),
+        "component": ("errorComponent", "component"),
+    }
+    missing: list[str] = []
+    for field, expected_value in expected_error.items():
+        if expected_value in (None, ""):
+            continue
+        if isinstance(actual_error_source, dict):
+            aliases = field_aliases.get(field, (field,))
+            actual_values = [str(actual_error_source.get(alias, "")) for alias in aliases]
+            if str(expected_value) in actual_values:
+                continue
+        if str(expected_value) not in haystack:
+            missing.append(field)
+    return missing
+
+
+def _run_transaction_case(
+    case_id: str,
+    case: dict[str, Any],
+    case_plan: dict[str, Any] | None,
+    envelope: dict[str, Any],
+    notification_url: str,
+    issuer_mode: dict[str, Any],
+    preferred_challenge: str,
+    case_areq: dict[str, Any],
+) -> dict[str, Any]:
+    expected_transactions = (case.get("expected", {}) or {}).get("transactions") or []
+    otp_attempts_by_transaction = _otp_attempts_by_transaction(
+        case_plan,
+        _read_otp_failure_max_attempts(envelope),
+    )
+    transaction_results: list[dict[str, Any]] = []
+    actual_request_bodies: list[Any] = []
+
+    for index, expected_transaction in enumerate(expected_transactions):
+        transaction_envelope = {
+            **envelope,
+            "otpAttempts": (
+                otp_attempts_by_transaction[index]
+                if index < len(otp_attempts_by_transaction)
+                else []
+            ),
+        }
+        if not transaction_envelope["otpAttempts"]:
+            transaction_envelope["autoSubmitOtp"] = False
+
+        run_result = _run_areq_flow(transaction_envelope, notification_url)
+        request_body = (
+            ((run_result.get("http") or {}).get("request_body"))
+            if isinstance(run_result.get("http"), dict)
+            else None
+        )
+        actual_request_bodies.append(request_body)
+
+        expected_status = (
+            (expected_transaction.get("messages") or {})
+            .get("CRes", {})
+            .get("transStatus")
+        )
+        cres = (run_result.get("autoCreq") or {}).get("cres") if isinstance(run_result.get("autoCreq"), dict) else None
+        actual_status = cres.get("transStatus") if isinstance(cres, dict) else None
+        transaction_results.append(
+            {
+                "index": index,
+                "label": expected_transaction.get("label", ""),
+                "expectedStatus": expected_status,
+                "actualStatus": actual_status,
+                "passed": run_result.get("ok") is True and expected_status == actual_status,
+                "ares": run_result.get("ares"),
+                "cres": cres,
+                "notification": _notification_from_auto_creq(run_result.get("autoCreq")),
+                "http": {"areq": run_result.get("http")},
+                "error": run_result.get("error") or run_result.get("draftError"),
+            }
+        )
+
+    case_areq["actualRequestBody"] = actual_request_bodies[0] if actual_request_bodies else None
+    case_areq["actualRequestBodies"] = actual_request_bodies
+
+    passed = bool(transaction_results) and all(item["passed"] for item in transaction_results)
+    expected_statuses = [item["expectedStatus"] for item in transaction_results]
+    actual_statuses = [item["actualStatus"] for item in transaction_results]
+    return {
+        "caseId": case_id,
+        "status": "pass" if passed else "fail",
+        "reason": (
+            f"Transaction CRes statuses matched {expected_statuses}."
+            if passed
+            else f"Expected transaction CRes statuses {expected_statuses}, got {actual_statuses}."
+        ),
+        "case": case,
+        "details": {
+            "expected": case.get("expected", {}),
+            "issuerMode": issuer_mode,
+            "preferredChallenge": preferred_challenge,
+            "casePlan": case_plan,
+            "caseAreq": case_areq,
+            "transactions": transaction_results,
+        },
+    }
+
+
+def _run_prompt_case(
+    case_id: str,
+    case: dict[str, Any],
+    case_plan: dict[str, Any] | None,
+    envelope: dict[str, Any],
+    notification_url: str,
+    issuer_mode: dict[str, Any],
+    preferred_challenge: str,
+    case_areq: dict[str, Any],
+) -> dict[str, Any]:
+    run_result = _run_areq_flow(envelope, notification_url)
+    case_areq["actualRequestBody"] = (
+        ((run_result.get("http") or {}).get("request_body"))
+        if isinstance(run_result.get("http"), dict)
+        else None
+    )
+    expected_prompts = (case.get("expected", {}) or {}).get("prompts") or []
+    visible_text = _visible_text_from_run_result(run_result)
+    if _is_acs_error(run_result.get("ares")):
+        return {
+            "caseId": case_id,
+            "status": "fail",
+            "reason": _acs_error_reason(run_result.get("ares")),
+            "case": case,
+            "details": {
+                "expected": case.get("expected", {}),
+                "issuerMode": issuer_mode,
+                "preferredChallenge": preferred_challenge,
+                "casePlan": case_plan,
+                "caseAreq": case_areq,
+                "prompt": {
+                    "expected": expected_prompts,
+                    "visibleText": visible_text,
+                    "missing": expected_prompts,
+                },
+                "ares": run_result.get("ares"),
+                "cres": None,
+                "notification": _notification_from_auto_creq(run_result.get("autoCreq")),
+                "http": {
+                    "areq": run_result.get("http"),
+                },
+                "error": run_result.get("error") or run_result.get("draftError"),
+            },
+        }
+    missing = _missing_prompt_text(expected_prompts, visible_text)
+    passed = run_result.get("ok") is True and bool(visible_text) and not missing
+    return {
+        "caseId": case_id,
+        "status": "pass" if passed else "fail",
+        "reason": (
+            "Expected prompt text was found."
+            if passed
+            else (
+                f"Missing expected prompt text: {missing}."
+                if visible_text
+                else "No challenge page text was captured."
+            )
+        ),
+        "case": case,
+        "details": {
+            "expected": case.get("expected", {}),
+            "issuerMode": issuer_mode,
+            "preferredChallenge": preferred_challenge,
+            "casePlan": case_plan,
+            "caseAreq": case_areq,
+            "prompt": {
+                "expected": expected_prompts,
+                "visibleText": visible_text,
+                "missing": missing,
+            },
+            "ares": run_result.get("ares"),
+            "cres": None,
+            "notification": _notification_from_auto_creq(run_result.get("autoCreq")),
+            "http": {
+                "areq": run_result.get("http"),
+            },
+            "error": run_result.get("error") or run_result.get("draftError"),
+        },
+    }
+
+
+def _run_resend_limit_case(
+    case_id: str,
+    case: dict[str, Any],
+    case_plan: dict[str, Any] | None,
+    envelope: dict[str, Any],
+    notification_url: str,
+    issuer_mode: dict[str, Any],
+    preferred_challenge: str,
+    case_areq: dict[str, Any],
+) -> dict[str, Any]:
+    run_result = _run_areq_flow(envelope, notification_url)
+    case_areq["actualRequestBody"] = (
+        ((run_result.get("http") or {}).get("request_body"))
+        if isinstance(run_result.get("http"), dict)
+        else None
+    )
+    auto_creq = run_result.get("autoCreq") if isinstance(run_result.get("autoCreq"), dict) else {}
+    submissions = auto_creq.get("resendSubmissions") if isinstance(auto_creq, dict) else []
+    if not isinstance(submissions, list):
+        submissions = []
+    limit_reached = bool(auto_creq.get("resendLimitReached")) if isinstance(auto_creq, dict) else False
+    passed = run_result.get("ok") is True and limit_reached and bool(submissions)
+    return {
+        "caseId": case_id,
+        "status": "pass" if passed else "fail",
+        "reason": (
+            f"Resend limit reached after {len(submissions)} resend attempt(s)."
+            if passed
+            else "Resend limit was not reached."
+        ),
+        "case": case,
+        "details": {
+            "expected": case.get("expected", {}),
+            "issuerMode": issuer_mode,
+            "preferredChallenge": preferred_challenge,
+            "casePlan": case_plan,
+            "caseAreq": case_areq,
+            "resendLimit": {
+                "attemptCount": len(submissions),
+                "maxAttempts": envelope.get("resendMaxAttempts"),
+                "reached": limit_reached,
+                "reason": auto_creq.get("resendLimitReason") if isinstance(auto_creq, dict) else "",
+                "submissions": submissions,
+            },
+            "ares": run_result.get("ares"),
+            "cres": auto_creq.get("cres") if isinstance(auto_creq, dict) else None,
+            "notification": _notification_from_auto_creq(auto_creq),
+            "http": {
+                "areq": run_result.get("http"),
+            },
+            "error": run_result.get("error") or run_result.get("draftError"),
+        },
+    }
+
+
+def _visible_text_from_run_result(run_result: dict[str, Any]) -> list[str]:
+    auto_creq = run_result.get("autoCreq")
+    if not isinstance(auto_creq, dict):
+        return []
+    visible_text: list[str] = []
+    for path in (
+        ("challenge",),
+        ("smsSelection", "challenge"),
+        ("otpSubmission", "challenge"),
+        ("resendSubmission", "challenge"),
+    ):
+        value: Any = auto_creq
+        for key in path:
+            value = value.get(key) if isinstance(value, dict) else None
+        if isinstance(value, dict) and isinstance(value.get("visibleText"), list):
+            visible_text.extend(str(item) for item in value["visibleText"])
+    for collection_name in ("otpSubmissions", "resendSubmissions"):
+        for submission in auto_creq.get(collection_name) or []:
+            value = submission.get("challenge") if isinstance(submission, dict) else None
+            if isinstance(value, dict) and isinstance(value.get("visibleText"), list):
+                visible_text.extend(str(item) for item in value["visibleText"])
+    return list(dict.fromkeys(visible_text))
+
+
+def _missing_prompt_text(expected_prompts: list[Any], visible_text: list[str]) -> list[str]:
+    visible = "\n".join(visible_text)
+    missing = []
+    for prompt in expected_prompts:
+        text = str(prompt)
+        normalized = _normalize_expected_prompt_text(text)
+        if not normalized:
+            continue
+        if normalized not in visible:
+            missing.append(text)
+    return missing
+
+
+def _normalize_expected_prompt_text(text: str) -> str:
+    text = str(text or "").strip()
+    if not text:
+        return ""
+    lower_text = text.lower()
+    if lower_text.startswith("display prompt") or lower_text.startswith("ui and page format"):
+        return ""
+    if lower_text.startswith("page content"):
+        return ""
+    if lower_text.startswith("help title:") or lower_text.startswith("help content:"):
+        return ""
+    merchant_prefixes = (
+        "Merchant:",
+        "商店:",
+        "ชื่อผู้ค้า:",
+        "ผู้ค้า:",
+        "ពាណិជ្ជករ:",
+    )
+    if any(text.startswith(prefix) for prefix in merchant_prefixes):
+        return ""
+    for prefix in (
+        "Title：",
+        "Title:",
+        "Input Prompt:",
+        "Submit OTP button:",
+        "Resend OTP button:",
+        "Help Title:",
+        "Help Content:",
+    ):
+        if text.startswith(prefix):
+            text = text[len(prefix):].strip()
+            break
+    dynamic_prefixes = (
+        "Amount:",
+        "Total amount:",
+        "Transaction time:",
+        "Transaction date:",
+        "Card number:",
+        "购买金额:",
+        "购买日期:",
+        "卡号:",
+        "ยอดรวมทั้งหมด:",
+        "วันที่/เวลาทำธุรกรรม:",
+        "วันที่/เวลาทำรายการ:",
+        "หมายเลขบัตร",
+        "ចំនួនទឹកប្រាក់សរុប:",
+        "កាលបរិច្ឆេទប្រតិបត្តិការ/ពេលវេលា:",
+    )
+    if text.startswith(dynamic_prefixes):
+        return ""
+    if "******" in text or "************" in text:
+        return ""
+    return text
+
+
+def _otp_attempts_by_transaction(
+    case_plan: dict[str, Any] | None,
+    failure_max_attempts: int = 5,
+) -> list[list[str]]:
+    segments: list[list[str]] = []
+    current: list[str] | None = None
+    for action in (case_plan or {}).get("actions") or []:
+        action_type = action.get("type")
+        if action_type == "send_areq":
+            if current is not None:
+                segments.append(current)
+            current = []
+            continue
+        if action_type == "submit_otp" and current is not None:
+            current.append(str(action.get("otpPurpose") or "success"))
+    if current is not None:
+        segments.append(current)
+    return [_expand_failure_attempt_segment(segment, failure_max_attempts) for segment in segments]
+
+
+def _expand_failure_attempt_segment(segment: list[str], failure_max_attempts: int) -> list[str]:
+    if segment and all(item == "failure" for item in segment):
+        return ["failure"] * max(1, failure_max_attempts)
+    return segment
+
+
+def _case_areq_record(case_id: str, transaction: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "caseId": case_id,
+        "sharedAcrossIssuerModes": True,
+        "url": str(transaction.get("url") or ""),
+        "headers": deepcopy(transaction.get("headers") or {}),
+        "payloadTemplate": deepcopy(transaction.get("payload")),
+        "actualRequestBody": None,
+    }
+
+
+def _transaction_for_case(case: dict[str, Any], transaction: dict[str, Any]) -> dict[str, Any]:
+    case_transaction = deepcopy(transaction)
+    payload = deepcopy(case_transaction.get("payload"))
+    if isinstance(payload, dict):
+        card_number = _card_number_for_case(case, case_transaction)
+        if card_number:
+            payload["acctNumber"] = card_number
+        browser_language = _browser_language_for_case(case)
+        if browser_language:
+            payload["browserLanguage"] = browser_language
+        tags = set((case.get("automation") or {}).get("tags") or [])
+        if "npa" in tags:
+            payload["messageCategory"] = "02"
+        elif "pa" in tags:
+            payload["messageCategory"] = "01"
+        case_transaction["payload"] = payload
+    return case_transaction
+
+
+def _browser_language_for_case(case: dict[str, Any]) -> str:
+    name = str(case.get("functionPoint") or "").lower()
+    if "simplified chinese" in name:
+        return "zh-CN"
+    if "thai" in name:
+        return "th-TH"
+    if "khmer" in name:
+        return "km-KH"
+    if "english" in name:
+        return "en-US"
+    return ""
+
+
+def _card_number_for_case(case: dict[str, Any], transaction: dict[str, Any]) -> str:
+    if _is_invalid_card_case(case):
+        return str(
+            transaction.get("invalidCardNumber")
+            or transaction.get("failedCardNumber")
+            or transaction.get("failureCardNumber")
+            or ""
+        )
+    return str(
+        transaction.get("validCardNumber")
+        or transaction.get("correctCardNumber")
+        or ""
+    )
+
+
+def _is_invalid_card_case(case: dict[str, Any]) -> bool:
+    tags = set((case.get("automation") or {}).get("tags") or [])
+    return "invalid_card" in tags
 
 
 def _case_plan_for_issuer_mode(case: dict[str, Any], issuer_mode_id: str) -> dict[str, Any] | None:
@@ -412,6 +1119,26 @@ def _notification_from_auto_creq(auto_creq: Any) -> Any:
     if isinstance(otp_submission, dict) and otp_submission.get("notification") is not None:
         return otp_submission.get("notification")
     return auto_creq.get("notification")
+
+
+def _summarize_sit_results(results: list[dict[str, Any]]) -> dict[str, int]:
+    summary = {
+        "total": len(results),
+        "completed": len(results),
+        "pass": 0,
+        "fail": 0,
+        "skipped": 0,
+        "error": 0,
+    }
+    for result in results:
+        status = str(result.get("status") or "")
+        if status in summary:
+            summary[status] += 1
+    return summary
+
+
+def _expected_actual_reason(label: str, expected: Any, actual: Any) -> str:
+    return f"預期 {label}={expected}，實際={actual}."
 
 
 def _with_fresh_transaction_ids(payload: Any) -> Any:
@@ -454,6 +1181,8 @@ def _post_creq(
     preferred_challenge: str = "auto",
     otp_attempts: list[str] | None = None,
     otp_settings: OtpSettings | None = None,
+    challenge_action: str = "",
+    resend_max_attempts: int = 10,
 ) -> dict[str, Any]:
     issuer_mode = issuer_mode or resolve_issuer_mode("")
     preferred_challenge = resolve_preferred_challenge(preferred_challenge)
@@ -472,6 +1201,10 @@ def _post_creq(
     response["oobSubmission"] = None
     response["otpSubmission"] = None
     response["otpSubmissions"] = []
+    response["resendSubmission"] = None
+    response["resendSubmissions"] = []
+    response["resendLimitReached"] = False
+    response["resendLimitReason"] = ""
     response["notification"] = _post_final_notification(page, cres, notification_url, timeout_seconds)
     response["issuerMode"] = issuer_mode
     response["preferredChallenge"] = preferred_challenge
@@ -501,6 +1234,8 @@ def _post_creq(
             notification_url,
             issuer_mode,
             preferred_challenge,
+            challenge_action,
+            resend_max_attempts,
         )
     elif page:
         _advance_challenge_response(
@@ -515,6 +1250,8 @@ def _post_creq(
             notification_url,
             issuer_mode,
             preferred_challenge,
+            challenge_action,
+            resend_max_attempts,
         )
 
     return response
@@ -532,6 +1269,8 @@ def _advance_challenge_response(
     notification_url: str,
     issuer_mode: dict[str, Any],
     preferred_challenge: str,
+    challenge_action: str = "",
+    resend_max_attempts: int = 10,
 ) -> None:
     if not page:
         return
@@ -564,6 +1303,8 @@ def _advance_challenge_response(
                 notification_url,
                 issuer_mode,
                 "otp",
+                challenge_action,
+                resend_max_attempts,
             )
             return
 
@@ -583,6 +1324,59 @@ def _advance_challenge_response(
                     timeout_seconds,
                 )
             return
+
+    if challenge_action == "cancel" and page["type"] in {"otp", "html"}:
+        cancel_response = _submit_challenge_form(
+            page,
+            _cancel_challenge_overrides(page),
+            timeout_seconds,
+        )
+        response["cancelSubmission"] = {
+            "action": "cancel",
+            **cancel_response,
+        }
+        if cancel_response.get("cres"):
+            _apply_final_challenge_response(
+                response,
+                "cancelSubmission",
+                cancel_response,
+                previous_creq,
+                notification_url,
+                timeout_seconds,
+            )
+        return
+
+    if challenge_action == "resend_limit" and page["type"] in {"otp", "html"}:
+        _resend_until_limit(
+            response,
+            page,
+            previous_creq,
+            timeout_seconds,
+            notification_url,
+            resend_max_attempts,
+        )
+        return
+
+    if challenge_action == "resend" and page["type"] in {"otp", "html"}:
+        resend_response = _submit_challenge_form(
+            page,
+            _resend_otp_overrides(page),
+            timeout_seconds,
+        )
+        response["resendSubmission"] = {
+            "action": "resend",
+            **resend_response,
+        }
+        if resend_response.get("cres"):
+            _apply_final_challenge_response(
+                response,
+                "resendSubmission",
+                resend_response,
+                previous_creq,
+                notification_url,
+                timeout_seconds,
+            )
+        return
 
     if page["type"] == "otp" and auto_submit_otp and otp_attempts:
         current_page = page
@@ -617,6 +1411,68 @@ def _advance_challenge_response(
             if not next_page or next_page.get("type") != "otp":
                 break
             current_page = next_page
+
+
+def _resend_until_limit(
+    response: dict[str, Any],
+    page: dict[str, Any],
+    previous_creq: dict[str, Any],
+    timeout_seconds: int,
+    notification_url: str,
+    max_attempts: int,
+) -> None:
+    current_page = page
+    max_attempts = max(1, max_attempts)
+    response.setdefault("resendSubmission", None)
+    response.setdefault("resendSubmissions", [])
+    response.setdefault("resendLimitReached", False)
+    response.setdefault("resendLimitReason", "")
+    for attempt in range(1, max_attempts + 1):
+        if not _page_has_resend_action(current_page):
+            response["resendLimitReached"] = bool(response["resendSubmissions"])
+            response["resendLimitReason"] = "Resend control is no longer available."
+            return
+
+        resend_response = _submit_challenge_form(
+            current_page,
+            _resend_otp_overrides(current_page),
+            timeout_seconds,
+        )
+        submission = {
+            "action": "resend",
+            "attempt": attempt,
+            **resend_response,
+        }
+        response["resendSubmission"] = submission
+        response["resendSubmissions"].append(submission)
+        if resend_response.get("cres"):
+            _apply_final_challenge_response(
+                response,
+                "resendSubmission",
+                resend_response,
+                previous_creq,
+                notification_url,
+                timeout_seconds,
+            )
+            response["resendLimitReached"] = True
+            response["resendLimitReason"] = "Final CRes returned during resend."
+            return
+
+        next_page = resend_response.get("challenge")
+        if not next_page:
+            response["resendLimitReached"] = True
+            response["resendLimitReason"] = "No challenge page returned after resend."
+            return
+        current_page = next_page
+
+    response["resendLimitReached"] = False
+    response["resendLimitReason"] = f"Safety max attempts reached ({max_attempts}) while resend control is still available."
+
+
+def _page_has_resend_action(page: dict[str, Any] | None) -> bool:
+    if not page:
+        return False
+    return bool((page.get("availableActions") or {}).get("resendOtp"))
 
 
 def _apply_final_challenge_response(
@@ -675,6 +1531,35 @@ def _switch_to_otp_overrides(page: dict[str, Any]) -> dict[str, str]:
     return {}
 
 
+def _cancel_challenge_overrides(page: dict[str, Any]) -> dict[str, str]:
+    fields = page.get("fields") or {}
+    for name in ("cancel", "cancelChallenge", "challengeCancel", "cancelTransaction", "cancelButton"):
+        if name in fields:
+            return {name: fields.get(name) or "Y"}
+    return {"cancel": "Y"}
+
+
+def _resend_otp_overrides(page: dict[str, Any]) -> dict[str, str]:
+    fields = page.get("fields") or {}
+    controls = page.get("actionControls") or []
+    resend_names = (
+        "resend",
+        "resendCode",
+        "resendOtp",
+        "resendOTP",
+        "resendButton",
+        "resendChallenge",
+    )
+    for name in resend_names:
+        if name in fields:
+            return {name: fields.get(name) or "Y"}
+    for control in controls:
+        name = str(control.get("name") or "")
+        if name and "resend" in name.lower():
+            return {name: str(control.get("value") or "Y")}
+    return {"resend": "Y"}
+
+
 def _submit_challenge_form(
     page: dict[str, Any],
     overrides: dict[str, str],
@@ -714,6 +1599,24 @@ def _read_otp_settings(envelope: dict[str, Any]) -> OtpSettings:
         success_otp=success_otp,
         failure_otp=failure_otp,
     )
+
+
+def _read_otp_failure_max_attempts(envelope: dict[str, Any]) -> int:
+    raw_value = envelope.get("otpFailureMaxAttempts", 5)
+    try:
+        attempts = int(raw_value)
+    except (TypeError, ValueError):
+        attempts = 5
+    return max(1, attempts)
+
+
+def _read_case_delay_seconds(envelope: dict[str, Any]) -> float:
+    raw_value = envelope.get("caseDelaySeconds", 0)
+    try:
+        delay = float(raw_value)
+    except (TypeError, ValueError):
+        delay = 0.0
+    return max(0.0, delay)
 
 
 def _radio_label(page: dict[str, Any], name: str, value: str) -> str:

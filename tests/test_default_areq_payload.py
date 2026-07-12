@@ -21,6 +21,7 @@ def test_default_areq_payload_contains_full_browser_sample_fields():
     assert payload["purchaseAmount"] == "5520"
     assert payload["notificationURL"].startswith("https://hooks.stripe.com/")
     assert payload["acctNumber"] == "5678910000000000"
+    assert payload["merchantName"] == "HiTRUST EMV Demo Merchant"
     assert payload["dsURL"] == "http://172.58.1.100:8020/api-proxy/challenge/2.2.0/001/rreq"
 
 

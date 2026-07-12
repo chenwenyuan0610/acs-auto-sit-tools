@@ -9,6 +9,49 @@ from acs_auto_sit.case_progress import build_browser_case_progress, case_progres
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_BROWSER_CASES_PATH = PROJECT_ROOT / "sit_cases" / "pipay_cup_browser_cases.json"
+LIVE_RUNNER_SUPPORTED_CASE_IDS = {
+    "case01",
+    "case02",
+    "case03",
+    "case04",
+    "case05",
+    "case06",
+    "case07",
+    "case08",
+    "case09",
+    "case10",
+    "case11",
+    "case12",
+    "case14",
+    "case15",
+    "case16",
+    "case17",
+    "case18",
+    "case19",
+    "case20",
+    "case21",
+    "case24",
+    "case25",
+    "case26",
+    "case28",
+    "case29",
+    "case30",
+    "case32",
+    "case33",
+    "case34",
+    "case35",
+    "case36",
+    "case37",
+    "case38",
+    "case39",
+    "case40",
+    "case41",
+    "case42",
+    "case43",
+    "case44",
+    "case45",
+    "case46",
+}
 
 
 def load_browser_case_catalog(path: Path = DEFAULT_BROWSER_CASES_PATH) -> dict[str, Any]:
@@ -84,6 +127,9 @@ def browser_cases_by_id(path: Path = DEFAULT_BROWSER_CASES_PATH) -> dict[str, di
 
 
 def live_skip_reason(case: dict[str, Any]) -> str | None:
+    if case.get("id") in LIVE_RUNNER_SUPPORTED_CASE_IDS:
+        return None
+
     automation = case.get("automation") or {}
     automation_status = str(automation.get("status") or "")
     if automation_status != "automatable":

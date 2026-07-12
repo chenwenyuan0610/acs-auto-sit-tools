@@ -27,6 +27,12 @@ const preferredChallengeInput = document.querySelector("#preferredChallenge");
 const otpSourceModeInput = document.querySelector("#otpSourceMode");
 const successOtpInput = document.querySelector("#successOtp");
 const failureOtpInput = document.querySelector("#failureOtp");
+const sitAreqUrlInput = document.querySelector("#sitAreqUrl");
+const validCardNumberInput = document.querySelector("#validCardNumber");
+const invalidCardNumberInput = document.querySelector("#invalidCardNumber");
+const otpFailureMaxAttemptsInput = document.querySelector("#otpFailureMaxAttempts");
+const caseDelaySecondsInput = document.querySelector("#caseDelaySeconds");
+const sitRunSummaryEl = document.querySelector("#sitRunSummary");
 const caseTitleEl = document.querySelector("#caseTitle");
 const caseSubtitleEl = document.querySelector("#caseSubtitle");
 const caseStatusEl = document.querySelector("#caseStatus");
@@ -55,6 +61,17 @@ function pretty(value) {
 function setStatus(text, isError = false) {
   statusEl.textContent = text;
   statusEl.classList.toggle("error", isError);
+}
+
+function renderSitRunSummary(summary) {
+  if (!sitRunSummaryEl) {
+    return;
+  }
+  const value = summary || { total: 0, completed: 0, pass: 0, fail: 0, skipped: 0, error: 0 };
+  sitRunSummaryEl.innerHTML = `
+    <strong>執行統計</strong>
+    <span>完成 ${value.completed || 0}/${value.total || 0}，成功 ${value.pass || 0}，失敗 ${value.fail || 0}，略過 ${value.skipped || 0}，錯誤 ${value.error || 0}</span>
+  `;
 }
 
 function pushEvidence(label, result) {
@@ -112,6 +129,10 @@ function readCommonEnvelope(url, payload) {
     otpSourceMode: otpSourceModeInput?.value || "customer_generated",
     successOtp: successOtpInput?.value || simulatedOtpInput?.value || "123456",
     failureOtp: failureOtpInput?.value || "000000",
+    validCardNumber: validCardNumberInput?.value || "",
+    invalidCardNumber: invalidCardNumberInput?.value || "",
+    otpFailureMaxAttempts: Number(otpFailureMaxAttemptsInput?.value || 5),
+    caseDelaySeconds: Number(caseDelaySecondsInput?.value || 0),
   };
 }
 
@@ -306,6 +327,7 @@ async function runSitCases(caseIds) {
   for (const caseId of caseIds) {
     caseResults[caseId] = { caseId, status: "running", reason: "執行中" };
   }
+  renderSitRunSummary({ total: caseIds.length, completed: 0, pass: 0, fail: 0, skipped: 0, error: 0 });
   renderCaseList();
   if (selectedCaseId) {
     selectCase(selectedCaseId);
@@ -317,7 +339,7 @@ async function runSitCases(caseIds) {
       issuerMode: issuerModeInput?.value || "direct_otp",
       preferredChallenge: preferredChallengeInput?.value || "auto",
       transaction: readCommonEnvelope(
-        areqUrlInput.value,
+        sitAreqUrlInput?.value || areqUrlInput.value,
         parseJsonField(areqPayloadInput, "AReq")
       ),
     });
@@ -326,7 +348,8 @@ async function runSitCases(caseIds) {
     }
     renderCaseList();
     selectCase(selectedCaseId || caseIds[0]);
-    setStatus("執行完成");
+    renderSitRunSummary(result.summary);
+    setStatus(`執行完成 ${result.summary?.completed || 0}/${result.summary?.total || caseIds.length}，成功 ${result.summary?.pass || 0}，失敗 ${result.summary?.fail || 0}`);
   } catch (error) {
     caseRunOutput.value = pretty({ error: error.message });
     setStatus("SIT 執行錯誤", true);
@@ -412,6 +435,7 @@ sendAreqButton.addEventListener("click", async () => {
 
 loadSitCases();
 loadIssuerModes();
+renderSitRunSummary(null);
 
 sendCreqButton.addEventListener("click", async () => {
   sendCreqButton.disabled = true;

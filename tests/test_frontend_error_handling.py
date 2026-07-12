@@ -33,6 +33,12 @@ def test_frontend_has_sit_runner_tab_and_controls():
     assert 'id="otpSourceMode"' in index_html
     assert 'id="successOtp"' in index_html
     assert 'id="failureOtp"' in index_html
+    assert 'id="sitAreqUrl"' in index_html
+    assert 'id="validCardNumber"' in index_html
+    assert 'id="invalidCardNumber"' in index_html
+    assert 'id="otpFailureMaxAttempts"' in index_html
+    assert 'id="caseDelaySeconds"' in index_html
+    assert 'id="sitRunSummary"' in index_html
     assert "/api/sit/browser-cases" in app_js
     assert "/api/sit/issuer-modes" in app_js
     assert "/api/sit/run" in app_js
@@ -43,6 +49,11 @@ def test_frontend_has_sit_runner_tab_and_controls():
     assert "otpSourceMode:" in app_js
     assert "successOtp:" in app_js
     assert "failureOtp:" in app_js
+    assert "validCardNumber:" in app_js
+    assert "invalidCardNumber:" in app_js
+    assert "otpFailureMaxAttempts:" in app_js
+    assert "caseDelaySeconds:" in app_js
+    assert "renderSitRunSummary" in app_js
     assert "caseImplementation" in app_js
     assert "已編寫" in app_js
     assert "待編寫" in app_js

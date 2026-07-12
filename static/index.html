@@ -137,7 +137,7 @@
   "dsURL": "http://172.58.1.100:8020/api-proxy/challenge/2.2.0/001/rreq",
   "mcc": "5734",
   "merchantCountryCode": "036",
-  "merchantName": "TEST ZOHO CORP PTY",
+  "merchantName": "HiTRUST EMV Demo Merchant",
   "messageCategory": "01",
   "notificationURL": "https://hooks.stripe.com/3d_secure_2/notify/acct_1EO0TdAveE1MHGwe/tds2_VFZDb2xOMGN1YWtPQWFBdGRlTnVxSy1KZjZkd0ZyRXV6QWdiIThsejMzRSMSFwoVYWNjdF8xRU8wVGRBdmVFMU1IR3dl",
   "purchaseAmount": "5520",
@@ -194,7 +194,31 @@
           <strong>案例編寫進度</strong>
           <span id="caseProgressSummary">尚未載入</span>
         </div>
+        <div id="sitRunSummary" class="progress-box">
+          <strong>執行統計</strong>
+          <span>尚未執行</span>
+        </div>
         <div class="sit-options">
+          <label>
+            SIT AReq URL
+            <input id="sitAreqUrl" spellcheck="false" value="https://acscloud-test.hitrust-us.com/acs-auth-v3/auth/M/220/0c57e472-e555-2c0a-e7cf-2d6a2455fbc8/123/areq" />
+          </label>
+          <label>
+            正確卡號
+            <input id="validCardNumber" spellcheck="false" value="5678910000000000" />
+          </label>
+          <label>
+            失敗卡號
+            <input id="invalidCardNumber" spellcheck="false" value="4000000000000002" />
+          </label>
+          <label>
+            OTP 失敗次數上限
+            <input id="otpFailureMaxAttempts" type="number" min="1" max="20" value="5" />
+          </label>
+          <label>
+            案例間隔秒數
+            <input id="caseDelaySeconds" type="number" min="0" max="30" step="0.5" value="1.5" />
+          </label>
           <label>
             發卡行模式
             <select id="issuerMode">

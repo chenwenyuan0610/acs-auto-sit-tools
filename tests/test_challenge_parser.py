@@ -37,3 +37,21 @@ def test_challenge_parser_detects_oob_page_that_can_switch_to_otp():
     assert page["type"] == "oob"
     assert page["availableActions"]["oobContinue"] is True
     assert page["availableActions"]["switchToOtp"] is True
+
+
+def test_challenge_parser_detects_resend_code_button():
+    page = parse_challenge_page(
+        """
+        <html><body>
+          <form action="/otp" method="POST">
+            <input type="hidden" name="acsTransID" value="acs-trans-1">
+            <input type="text" name="challengeValue" value="">
+            <button type="submit" name="resendCode" value="Y">RESEND CODE</button>
+          </form>
+        </body></html>
+        """,
+        "https://acs.example.test/challenge",
+    )
+
+    assert page["type"] == "otp"
+    assert page["availableActions"]["resendOtp"] is True
