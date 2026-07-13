@@ -187,7 +187,7 @@ def test_live_runner_applies_case_run_card_settings(monkeypatch):
             "headers": {"Content-Type": "application/json"},
             "payload": {"messageType": "AReq", "messageVersion": "2.2.0", "acctNumber": "original"},
             "timeoutSeconds": 1,
-            "validCardNumber": "5678910000000000",
+            "validCardNumber": "4771048901645588",
             "invalidCardNumber": "4000000000000002",
         },
         "http://127.0.0.1/api/notification",
@@ -718,6 +718,63 @@ def test_transaction_for_case_sets_browser_language_from_case_name():
     assert english["payload"]["browserLanguage"] == "en-US"
 
 
+def test_transaction_for_case_applies_3ri_fields_and_invalid_card():
+    base_transaction = {
+        "payload": {
+            "messageType": "AReq",
+            "messageVersion": "2.2.0",
+            "messageCategory": "01",
+            "deviceChannel": "02",
+        },
+        "validCardNumber": "4771048901645588",
+        "invalidCardNumber": "4771048901645589",
+    }
+    cases = server_module.browser_cases_by_id()
+
+    valid = server_module._transaction_for_case(cases["case11"], base_transaction)
+    invalid = server_module._transaction_for_case(cases["case12"], base_transaction)
+
+    for transaction in (valid, invalid):
+        assert transaction["payload"]["messageCategory"] == "02"
+        assert transaction["payload"]["deviceChannel"] == "03"
+        assert transaction["payload"]["threeDSRequestorAuthenticationInd"] == "01"
+        assert transaction["payload"]["threeRIInd"] == "03"
+    assert valid["payload"]["acctNumber"] == "4771048901645588"
+    assert invalid["payload"]["acctNumber"] == "4771048901645589"
+
+
+def test_transaction_for_case_applies_excel_purchase_currency():
+    base_transaction = {
+        "payload": {
+            "messageType": "AReq",
+            "messageVersion": "2.2.0",
+            "purchaseCurrency": "554",
+        }
+    }
+    cases = server_module.browser_cases_by_id()
+
+    actual = {
+        case_id: server_module._transaction_for_case(cases[case_id], base_transaction)["payload"]["purchaseCurrency"]
+        for case_id in ("case18", "case19", "case20", "case21")
+    }
+
+    assert actual == {
+        "case18": "840",
+        "case19": "156",
+        "case20": "978",
+        "case21": "007",
+    }
+
+
+def test_live_runner_excludes_cases_requiring_external_state_or_long_waits():
+    cases = server_module.browser_cases_by_id()
+
+    for case_id in ("case15", "case16", "case17", "case22", "case47", "case48", "case49", "case50"):
+        reason = server_module.live_skip_reason(cases[case_id])
+        assert reason is not None
+        assert "not included in this live run" in reason
+
+
 def test_live_runner_runs_case09_success_challenge(monkeypatch):
     calls = []
 
@@ -817,30 +874,83 @@ def test_live_runner_runs_case14_cancel_challenge(monkeypatch):
     assert result["status"] == "pass"
 
 
-def test_live_runner_matches_error_cases_15_17_21(monkeypatch):
+def test_post_creq_forwards_language_header_to_initial_and_cancel_forms(monkeypatch):
+    requests = []
     responses = [
-        {
-            "errorCode": "303",
-            "errorDescription": "Access Denied, Invalid Endpoint",
-            "errorDetail": "Issuer(issuer oid) does not support for Card Scheme(C)!",
-        },
-        {
-            "errorCode": "304",
-            "errorDescription": "ISO code not valid",
-            "errorDetail": "ISO code not valid - purchaseExponent!",
-        },
-        {
-            "errorCode": "304",
-            "errorComponent": "A",
-            "errorDescription": "ISO code not valid",
-            "errorDetail": "ISO code not valid - purchaseCurrency!",
-        },
+        """
+        <html><body>
+          <form action="/otp" method="POST">
+            <input type="hidden" name="acsTransID" value="acs-trans-1">
+            <input type="hidden" name="cancel" value="false">
+            <input type="text" name="challengeValue" value="">
+          </form>
+        </body></html>
+        """,
+        "",
     ]
 
+    def fake_post_form(url, form, headers=None, timeout_seconds=30, use_system_proxy=False):
+        requests.append({"url": url, "form": form, "headers": headers})
+        return PostResult(
+            method="POST",
+            url=url,
+            request_headers=headers or {},
+            request_body=form,
+            status_code=200,
+            response_headers={},
+            response_text=responses.pop(0),
+            response_json=None,
+            elapsed_ms=1,
+            error=None,
+        )
+
+    monkeypatch.setattr(server_module, "post_form", fake_post_form)
+
+    server_module._post_creq(
+        "https://acs.example.test/challenge",
+        {"acsTransID": "acs-trans-1", "messageType": "CReq", "messageVersion": "2.2.0"},
+        1,
+        auto_submit_otp=False,
+        challenge_action="cancel",
+        challenge_headers={"Accept-Language": "th-TH"},
+    )
+
+    assert [item["headers"] for item in requests] == [
+        {"Accept-Language": "th-TH"},
+        {"Accept-Language": "th-TH"},
+    ]
+    assert requests[1]["form"]["cancel"] == "true"
+
+
+def test_cancel_challenge_override_sets_acs_boolean_value():
+    page = {
+        "fields": {"acsTransID": "acs-trans-1", "cancel": "false"},
+        "actionControls": [{"id": "btnCancelDirect", "name": "", "value": ""}],
+    }
+
+    assert server_module._cancel_challenge_overrides(page) == {"cancel": "true"}
+
+
+def test_challenge_headers_use_case_browser_language():
+    assert server_module._challenge_headers_for_payload({"browserLanguage": "km-KH"}) == {
+        "Accept-Language": "km-KH"
+    }
+    assert server_module._challenge_headers_for_payload({}) == {}
+
+
+def test_live_runner_skips_admin_error_cases_and_matches_case21(monkeypatch):
+    calls = []
+
     def fake_run_areq_flow(envelope, notification_url):
+        calls.append(envelope)
         return {
             "ok": True,
-            "ares": responses.pop(0),
+            "ares": {
+                "errorCode": "304",
+                "errorComponent": "A",
+                "errorDescription": "ISO code not valid",
+                "errorDetail": "ISO code not valid - purchaseCurrency!",
+            },
             "autoCreq": None,
             "http": {"request_body": envelope["payload"]},
         }
@@ -861,11 +971,13 @@ def test_live_runner_matches_error_cases_15_17_21(monkeypatch):
     )
 
     assert [result["caseId"] for result in results] == ["case15", "case17", "case21"]
-    assert [result["status"] for result in results] == ["pass", "pass", "pass"]
-    assert [result["details"]["errorMatch"]["expected"]["code"] for result in results] == ["303", "304", "304"]
+    assert [result["status"] for result in results] == ["skipped", "skipped", "pass"]
+    assert len(calls) == 1
+    assert calls[0]["payload"]["purchaseCurrency"] == "007"
+    assert results[2]["details"]["errorMatch"]["expected"]["code"] == "304"
 
 
-def test_live_runner_runs_currency_success_cases_16_18_to_20(monkeypatch):
+def test_live_runner_skips_admin_currency_case_and_runs_cases18_to20(monkeypatch):
     calls = []
 
     def fake_run_areq_flow(envelope, notification_url):
@@ -892,9 +1004,10 @@ def test_live_runner_runs_currency_success_cases_16_18_to_20(monkeypatch):
         "auto",
     )
 
-    assert [call["otpAttempts"] for call in calls] == [["success"], ["success"], ["success"], ["success"]]
+    assert [call["otpAttempts"] for call in calls] == [["success"], ["success"], ["success"]]
+    assert [call["payload"]["purchaseCurrency"] for call in calls] == ["840", "156", "978"]
     assert [result["caseId"] for result in results] == ["case16", "case18", "case19", "case20"]
-    assert [result["status"] for result in results] == ["pass", "pass", "pass", "pass"]
+    assert [result["status"] for result in results] == ["skipped", "pass", "pass", "pass"]
 
 
 def test_live_runner_runs_localized_otp_page_prompt_cases(monkeypatch):
@@ -1031,6 +1144,7 @@ def test_live_runner_runs_resend_prompt_cases(monkeypatch):
     )
 
     assert [call["challengeAction"] for call in calls] == ["resend"] * len(case_ids)
+    assert [call.get("resendDelaySeconds", 0) for call in calls] == [30, 30, 30, 30, 0, 0, 0, 0]
     assert [call["autoSubmitOtp"] for call in calls] == [False] * len(case_ids)
     assert [result["status"] for result in results] == ["pass"] * len(case_ids)
     assert all(not result["details"]["prompt"]["missing"] for result in results)
@@ -1038,6 +1152,7 @@ def test_live_runner_runs_resend_prompt_cases(monkeypatch):
 
 def test_challenge_advance_submits_resend_code_control(monkeypatch):
     forms = []
+    sleeps = []
 
     def fake_post_form(url, form, headers=None, timeout_seconds=30, use_system_proxy=False):
         forms.append(form)
@@ -1064,6 +1179,7 @@ def test_challenge_advance_submits_resend_code_control(monkeypatch):
         )
 
     monkeypatch.setattr(server_module, "post_form", fake_post_form)
+    monkeypatch.setattr(server_module.time, "sleep", sleeps.append)
     page = server_module.parse_challenge_page(
         """
         <html><body>
@@ -1095,11 +1211,81 @@ def test_challenge_advance_submits_resend_code_control(monkeypatch):
         resolve_issuer_mode("direct_otp"),
         "auto",
         "resend",
+        resend_delay_seconds=30,
     )
 
+    assert sleeps == [30]
     assert forms == [{"acsTransID": "acs-trans-1", "challengeValue": "", "resendCode": "Y"}]
     assert response["resendSubmission"]["action"] == "resend"
     assert "Verification code was resend." in response["resendSubmission"]["challenge"]["visibleText"]
+
+
+def test_challenge_advance_uses_lookup_api_for_acs_generated_success_otp(monkeypatch):
+    forms = []
+
+    def fake_lookup_acs_generated_otp(acs_trans_id, settings, timeout_seconds=30):
+        assert acs_trans_id == "acs-trans-lookup"
+        assert settings.lookup_url_template.endswith("{acsTrandId}")
+        return "654321", {"source": "lookup_api", "lookupUsed": True}
+
+    def fake_post_form(url, form, headers=None, timeout_seconds=30, use_system_proxy=False):
+        forms.append(form)
+        return PostResult(
+            method="POST",
+            url=url,
+            request_headers={},
+            request_body=form,
+            status_code=200,
+            response_headers={},
+            response_text="""
+            <html><body>
+              <form method="POST">
+                <input type="hidden" name="cres" value="">
+              </form>
+            </body></html>
+            """,
+            response_json=None,
+            elapsed_ms=1,
+            error=None,
+        )
+
+    monkeypatch.setattr(server_module, "lookup_acs_generated_otp", fake_lookup_acs_generated_otp)
+    monkeypatch.setattr(server_module, "post_form", fake_post_form)
+    page = server_module.parse_challenge_page(
+        """
+        <html><body>
+          <form action="/otp" method="POST">
+            <input type="hidden" name="acsTransID" value="acs-trans-lookup">
+            <input type="text" name="challengeValue" value="">
+          </form>
+        </body></html>
+        """,
+        "https://acs.example.test/challenge",
+    )
+    response = {"otpSubmissions": []}
+
+    server_module._advance_challenge_response(
+        response,
+        page,
+        {"acsTransID": "acs-trans-lookup"},
+        1,
+        True,
+        "123456",
+        ["success"],
+        server_module.OtpSettings(
+            source_mode="acs_generated",
+            success_otp="123456",
+            failure_otp="000000",
+            lookup_url_template="https://acscloud-test.hitrust-us.com/acs-sit-info/api/sit/otp/{acsTrandId}",
+        ),
+        "http://127.0.0.1/api/notification",
+        resolve_issuer_mode("direct_otp"),
+        "auto",
+    )
+
+    assert forms == [{"acsTransID": "acs-trans-lookup", "challengeValue": "654321"}]
+    assert response["otpSubmission"]["otpLookup"]["source"] == "lookup_api"
+    assert response["otpSubmission"]["simulatedOtpUsed"] is False
 
 
 def test_live_runner_runs_resend_limit_cases(monkeypatch):
@@ -1139,6 +1325,7 @@ def test_live_runner_runs_resend_limit_cases(monkeypatch):
     )
 
     assert [call["challengeAction"] for call in calls] == ["resend_limit"] * len(case_ids)
+    assert [call["resendDelaySeconds"] for call in calls] == [30] * len(case_ids)
     assert [call["resendMaxAttempts"] for call in calls] == [10] * len(case_ids)
     assert [call["autoSubmitOtp"] for call in calls] == [False] * len(case_ids)
     assert [result["status"] for result in results] == ["pass"] * len(case_ids)
@@ -1147,6 +1334,7 @@ def test_live_runner_runs_resend_limit_cases(monkeypatch):
 
 def test_challenge_advance_resends_until_resend_control_disappears(monkeypatch):
     forms = []
+    sleeps = []
     pages = [
         """
         <html><body>
@@ -1185,6 +1373,7 @@ def test_challenge_advance_resends_until_resend_control_disappears(monkeypatch):
         )
 
     monkeypatch.setattr(server_module, "post_form", fake_post_form)
+    monkeypatch.setattr(server_module.time, "sleep", sleeps.append)
     page = server_module.parse_challenge_page(
         """
         <html><body>
@@ -1216,8 +1405,10 @@ def test_challenge_advance_resends_until_resend_control_disappears(monkeypatch):
         resolve_issuer_mode("direct_otp"),
         "auto",
         "resend_limit",
+        resend_delay_seconds=30,
     )
 
+    assert sleeps == [30, 30]
     assert forms == [
         {"acsTransID": "acs-trans-1", "challengeValue": "", "resendCode": "Y"},
         {"acsTransID": "acs-trans-1", "challengeValue": "", "resendCode": "Y"},
@@ -1284,7 +1475,7 @@ def test_case_areq_record_is_shared_across_issuer_modes(monkeypatch):
     transaction = {
         "url": "http://127.0.0.1/not-used",
         "headers": {"Content-Type": "application/json"},
-        "payload": {"messageType": "AReq", "messageVersion": "2.2.0", "acctNumber": "5678910000000000"},
+        "payload": {"messageType": "AReq", "messageVersion": "2.2.0", "acctNumber": "4771048901645588"},
         "timeoutSeconds": 1,
     }
 

@@ -19,6 +19,11 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", default=15, type=int)
     parser.add_argument("--issuer-mode", default="selection_sms_otp")
     parser.add_argument("--preferred-challenge", default="auto")
+    parser.add_argument(
+        "--otp-source-mode",
+        choices=("customer_generated", "acs_generated"),
+        default="acs_generated",
+    )
     parser.add_argument("--case-delay-seconds", default=1.5, type=float)
     parser.add_argument("--cases", default="", help="Comma-separated case IDs. Defaults to all Browser cases.")
     args = parser.parse_args()
@@ -33,7 +38,12 @@ def main() -> int:
         "mode": "live",
         "issuerMode": args.issuer_mode,
         "preferredChallenge": args.preferred_challenge,
-        "transaction": _transaction_from_index(index_html, args.timeout_seconds, args.case_delay_seconds),
+        "transaction": _transaction_from_index(
+            index_html,
+            args.timeout_seconds,
+            args.case_delay_seconds,
+            args.otp_source_mode,
+        ),
     }
     result = _post_json(f"{args.server}/api/sit/run", body, timeout=900)
     output_path = ROOT / args.output
@@ -43,7 +53,12 @@ def main() -> int:
     return 0
 
 
-def _transaction_from_index(index_html: str, timeout_seconds: int, case_delay_seconds: float = 0) -> dict[str, Any]:
+def _transaction_from_index(
+    index_html: str,
+    timeout_seconds: int,
+    case_delay_seconds: float = 0,
+    otp_source_mode: str = "acs_generated",
+) -> dict[str, Any]:
     return {
         "url": _input_value(index_html, "sitAreqUrl") or _input_value(index_html, "areqUrl"),
         "headers": json.loads(_textarea_value(index_html, "headers")),
@@ -52,11 +67,15 @@ def _transaction_from_index(index_html: str, timeout_seconds: int, case_delay_se
         "autoSelectSms": True,
         "autoSubmitOtp": True,
         "simulatedOtp": _input_value(index_html, "simulatedOtp") or "123456",
-        "otpSourceMode": "customer_generated",
+        "otpSourceMode": otp_source_mode,
+        "otpLookupUrl": (
+            _input_value(index_html, "otpLookupUrl")
+            or "https://acscloud-test.hitrust-us.com/acs-sit-info/api/sit/otp/{acsTrandId}"
+        ),
         "successOtp": _input_value(index_html, "successOtp") or "123456",
         "failureOtp": _input_value(index_html, "failureOtp") or "000000",
-        "validCardNumber": _input_value(index_html, "validCardNumber") or "5678910000000000",
-        "invalidCardNumber": _input_value(index_html, "invalidCardNumber") or "4000000000000002",
+        "validCardNumber": _input_value(index_html, "validCardNumber") or "4771048901645588",
+        "invalidCardNumber": _input_value(index_html, "invalidCardNumber") or "4771048901645589",
         "otpFailureMaxAttempts": int(_input_value(index_html, "otpFailureMaxAttempts") or 5),
         "caseDelaySeconds": case_delay_seconds,
     }

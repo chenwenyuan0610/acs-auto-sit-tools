@@ -16,15 +16,17 @@ const notificationOutput = document.querySelector("#notificationOutput");
 const evidenceOutput = document.querySelector("#evidenceOutput");
 const tabButtons = document.querySelectorAll(".tab-button");
 const tabPanels = document.querySelectorAll(".tab-panel");
+const caseViewButtons = document.querySelectorAll("[data-case-view]");
+const caseViewPanels = document.querySelectorAll(".case-control-view");
 const caseListEl = document.querySelector("#caseList");
 const caseCountEl = document.querySelector("#caseCount");
-const caseProgressSummaryEl = document.querySelector("#caseProgressSummary");
 const selectAllCasesInput = document.querySelector("#selectAllCases");
 const runSelectedCasesButton = document.querySelector("#runSelectedCases");
 const runAllCasesButton = document.querySelector("#runAllCases");
 const issuerModeInput = document.querySelector("#issuerMode");
 const preferredChallengeInput = document.querySelector("#preferredChallenge");
 const otpSourceModeInput = document.querySelector("#otpSourceMode");
+const otpLookupUrlInput = document.querySelector("#otpLookupUrl");
 const successOtpInput = document.querySelector("#successOtp");
 const failureOtpInput = document.querySelector("#failureOtp");
 const sitAreqUrlInput = document.querySelector("#sitAreqUrl");
@@ -36,8 +38,14 @@ const sitRunSummaryEl = document.querySelector("#sitRunSummary");
 const caseTitleEl = document.querySelector("#caseTitle");
 const caseSubtitleEl = document.querySelector("#caseSubtitle");
 const caseStatusEl = document.querySelector("#caseStatus");
-const caseStepsOutput = document.querySelector("#caseStepsOutput");
+const caseAcsTransIdEl = document.querySelector("#caseAcsTransId");
+const caseAcsTransIdValueEl = document.querySelector("#caseAcsTransIdValue");
+const caseFunctionPointEl = document.querySelector("#caseFunctionPoint");
+const caseModuleEl = document.querySelector("#caseModule");
+const caseStepsListEl = document.querySelector("#caseStepsList");
 const caseExpectedOutput = document.querySelector("#caseExpectedOutput");
+const caseActualOutput = document.querySelector("#caseActualOutput");
+const caseDiffOutput = document.querySelector("#caseDiffOutput");
 const caseRunOutput = document.querySelector("#caseRunOutput");
 
 let evidence = [];
@@ -56,6 +64,184 @@ function parseJsonField(field, label) {
 
 function pretty(value) {
   return JSON.stringify(value, null, 2);
+}
+
+function acsTransIdForResult(result) {
+  const details = result?.details || {};
+  const transactionIds = (details.transactions || []).flatMap((transaction) => [
+    transaction.ares?.acsTransID,
+    transaction.cres?.acsTransID,
+    transaction.notification?.notification?.cres?.acsTransID,
+    transaction.notification?.cres?.acsTransID,
+  ]);
+  const candidates = [
+    details.ares?.acsTransID,
+    details.cres?.acsTransID,
+    details.notification?.notification?.cres?.acsTransID,
+    details.notification?.cres?.acsTransID,
+    ...transactionIds,
+  ];
+  return candidates.find((value) => typeof value === "string" && value.trim())?.trim() || "";
+}
+
+function actualResultForCase(result) {
+  if (!result) {
+    return { message: "尚未執行" };
+  }
+
+  const details = result.details || {};
+  const prompt = details.prompt
+    ? {
+        visibleText: details.prompt.visibleText || [],
+        missing: details.prompt.missing || [],
+      }
+    : undefined;
+  const transactions = Array.isArray(details.transactions)
+    ? details.transactions.map((transaction) => ({
+        label: transaction.label || `Transaction ${(transaction.index ?? 0) + 1}`,
+        expectedStatus: transaction.expectedStatus,
+        actualStatus: transaction.actualStatus,
+        passed: transaction.passed,
+      }))
+    : undefined;
+
+  return Object.fromEntries(
+    Object.entries({
+      status: statusLabel(result.status),
+      reason: result.reason || undefined,
+      ARes: details.ares,
+      CRes: details.cres,
+      notification: details.notification?.notification ?? details.notification,
+      prompt,
+      transactions,
+      resendLimit: details.resendLimit,
+      error: details.errorMatch?.actual ?? details.error,
+    }).filter(([, value]) => value !== undefined && value !== null)
+  );
+}
+
+function differenceValue(value) {
+  if (value === undefined || value === null || value === "") {
+    return "未回傳";
+  }
+  return typeof value === "object" ? JSON.stringify(value) : String(value);
+}
+
+function collectResultDifferences(result) {
+  if (!result || ["pending", "running"].includes(result.status)) {
+    return [];
+  }
+  if (result.status === "skipped") {
+    return [{ label: "略過原因", message: result.reason || "案例未執行", tone: "neutral" }];
+  }
+  if (result.status === "pass") {
+    return [];
+  }
+
+  const details = result.details || {};
+  const differences = [];
+  const keys = new Set();
+  const addDifference = (difference) => {
+    const key = `${difference.label}|${differenceValue(difference.expected)}|${differenceValue(difference.actual)}`;
+    if (!keys.has(key)) {
+      keys.add(key);
+      differences.push(difference);
+    }
+  };
+
+  for (const [field, mismatch] of Object.entries(details.aresMismatches || {})) {
+    addDifference({ label: `ARes ${field}`, expected: mismatch.expected, actual: mismatch.actual });
+  }
+
+  const expectedMessages = details.expected?.messages || {};
+  for (const [messageName, actualMessage] of [
+    ["ARes", details.ares],
+    ["CRes", details.cres],
+  ]) {
+    for (const [field, expected] of Object.entries(expectedMessages[messageName] || {})) {
+      const actual = actualMessage?.[field];
+      if (expected !== actual) {
+        addDifference({ label: `${messageName} ${field}`, expected, actual });
+      }
+    }
+  }
+
+  for (const prompt of details.prompt?.missing || []) {
+    addDifference({ label: "缺少預期文字", expected: prompt, actual: "實際頁面未找到" });
+  }
+
+  const errorAliases = {
+    code: "errorCode",
+    component: "errorComponent",
+    description: "errorDescription",
+    detail: "errorDetail",
+  };
+  for (const field of details.errorMatch?.missing || []) {
+    addDifference({
+      label: `Erro ${field}`,
+      expected: details.errorMatch?.expected?.[field],
+      actual: details.errorMatch?.actual?.[errorAliases[field] || field],
+    });
+  }
+
+  for (const transaction of details.transactions || []) {
+    if (transaction.passed === false || transaction.expectedStatus !== transaction.actualStatus) {
+      addDifference({
+        label: transaction.label || `Transaction ${(transaction.index ?? 0) + 1}`,
+        expected: transaction.expectedStatus,
+        actual: transaction.actualStatus,
+      });
+    }
+  }
+
+  if (details.resendLimit && !details.resendLimit.reached) {
+    addDifference({
+      label: "OTP 重送上限",
+      expected: "達到 ACS 重送上限",
+      actual: details.resendLimit.reason || `重送 ${details.resendLimit.attemptCount || 0} 次後仍未達上限`,
+    });
+  }
+
+  if (details.error) {
+    addDifference({ label: "執行錯誤", message: differenceValue(details.error) });
+  }
+  if (differences.length === 0) {
+    addDifference({ label: "執行結果", message: result.reason || "實際結果與預期不一致" });
+  }
+  return differences;
+}
+
+function renderResultDifferences(result) {
+  const differences = collectResultDifferences(result);
+  caseDiffOutput.replaceChildren();
+
+  if (differences.length === 0) {
+    const message = document.createElement("p");
+    message.className = result?.status === "pass" ? "comparison-match" : "comparison-pending";
+    message.textContent = result?.status === "pass" ? "實際結果符合預期" : "執行後將在此顯示差異";
+    caseDiffOutput.appendChild(message);
+    caseActualOutput.classList.remove("has-differences");
+    return;
+  }
+
+  let hasDifferences = false;
+  for (const difference of differences) {
+    const item = document.createElement("div");
+    item.className = "difference-item";
+    if (difference.tone === "neutral") {
+      item.classList.add("neutral");
+    } else {
+      hasDifferences = true;
+    }
+
+    const title = document.createElement("strong");
+    title.textContent = difference.label;
+    const detail = document.createElement("span");
+    detail.textContent = difference.message || `預期：${differenceValue(difference.expected)}；實際：${differenceValue(difference.actual)}`;
+    item.append(title, detail);
+    caseDiffOutput.appendChild(item);
+  }
+  caseActualOutput.classList.toggle("has-differences", hasDifferences);
 }
 
 function setStatus(text, isError = false) {
@@ -127,6 +313,9 @@ function readCommonEnvelope(url, payload) {
     autoSubmitOtp: Boolean(autoSubmitOtpInput?.checked),
     simulatedOtp: simulatedOtpInput?.value || "",
     otpSourceMode: otpSourceModeInput?.value || "customer_generated",
+    otpLookupUrl:
+      otpLookupUrlInput?.value ||
+      "https://acscloud-test.hitrust-us.com/acs-sit-info/api/sit/otp/{acsTrandId}",
     successOtp: successOtpInput?.value || simulatedOtpInput?.value || "123456",
     failureOtp: failureOtpInput?.value || "000000",
     validCardNumber: validCardNumberInput?.value || "",
@@ -145,6 +334,19 @@ function setActiveTab(tabId) {
   });
 }
 
+function setCaseControlView(viewId) {
+  caseViewButtons.forEach((button) => {
+    const active = button.dataset.caseView === viewId;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  caseViewPanels.forEach((panel) => {
+    const active = panel.id === viewId;
+    panel.classList.toggle("active", active);
+    panel.hidden = !active;
+  });
+}
+
 function statusLabel(status) {
   const labels = {
     pending: "待執行",
@@ -159,14 +361,6 @@ function statusLabel(status) {
 
 function statusForCase(caseItem) {
   return caseResults[caseItem.id]?.status || caseItem.status || "pending";
-}
-
-function implementationStatusLabel(caseItem) {
-  const status = caseItem.caseImplementation?.directOtp?.status;
-  if (status === "completed") {
-    return "已編寫";
-  }
-  return "待編寫";
 }
 
 function issuerModeLabel(mode) {
@@ -206,7 +400,6 @@ function renderCaseList() {
       <span class="case-main">
         <span class="case-id">${caseItem.id}</span>
         <span class="case-name">${caseItem.functionPoint}</span>
-        <span class="case-implementation">${implementationStatusLabel(caseItem)}</span>
       </span>
       <span class="case-status ${status}">${statusLabel(status)}</span>
     `;
@@ -231,15 +424,33 @@ function selectCase(caseId) {
   const result = caseResults[caseId];
   const status = result?.status || caseItem.status || "pending";
   caseTitleEl.textContent = `${caseItem.id} ${caseItem.functionPoint}`;
-  caseSubtitleEl.textContent = `${caseItem.system} · ${caseItem.module}`;
+  caseSubtitleEl.textContent = caseItem.system || "瀏覽器 SIT";
   caseStatusEl.textContent = statusLabel(status);
   caseStatusEl.className = `case-status ${status}`;
-  caseStepsOutput.value = (caseItem.steps || []).join("\n");
-  caseExpectedOutput.value = pretty(caseItem.expected || {});
-  caseRunOutput.value = pretty(result || {
+  const acsTransId = acsTransIdForResult(result);
+  caseAcsTransIdValueEl.textContent = acsTransId;
+  caseAcsTransIdEl.hidden = !acsTransId;
+  caseFunctionPointEl.textContent = caseItem.functionPoint || "-";
+  caseModuleEl.textContent = caseItem.module || "-";
+
+  caseStepsListEl.replaceChildren();
+  for (const step of caseItem.steps || []) {
+    const item = document.createElement("li");
+    item.textContent = step;
+    caseStepsListEl.appendChild(item);
+  }
+  if (!caseStepsListEl.children.length) {
+    const item = document.createElement("li");
+    item.textContent = "Excel 未提供測試步驟";
+    caseStepsListEl.appendChild(item);
+  }
+
+  caseExpectedOutput.textContent = pretty(caseItem.expected || {});
+  caseActualOutput.textContent = pretty(actualResultForCase(result));
+  renderResultDifferences(result);
+  caseRunOutput.textContent = pretty(result || {
     message: "尚未執行",
     automation: caseItem.automation,
-    caseImplementation: caseItem.caseImplementation,
   });
   renderCaseList();
 }
@@ -273,17 +484,13 @@ async function loadSitCases() {
     const result = await getApi("/api/sit/browser-cases");
     sitCases = result.cases || [];
     caseCountEl.textContent = `${result.caseCount || sitCases.length} 個案例`;
-    if (caseProgressSummaryEl) {
-      const progress = result.caseProgress || {};
-      caseProgressSummaryEl.textContent = `direct_otp 已編寫 ${progress.directOtpCompleted || 0}/${progress.total || 0}；selection_sms_otp 已編寫 ${progress.selectionSmsOtpCompleted || 0}/${progress.total || 0}；其他模式待編寫`;
-    }
     selectedCaseId = sitCases[0]?.id || "";
     renderCaseList();
     if (selectedCaseId) {
       selectCase(selectedCaseId);
     }
   } catch (error) {
-    caseRunOutput.value = pretty({ error: error.message });
+    caseRunOutput.textContent = pretty({ error: error.message });
   }
 }
 
@@ -312,7 +519,7 @@ async function loadIssuerModes() {
     }
     preferredChallengeInput.value = result.defaultPreferredChallenge || "auto";
   } catch (error) {
-    caseRunOutput.value = pretty({ error: error.message });
+    caseRunOutput.textContent = pretty({ error: error.message });
   }
 }
 
@@ -351,7 +558,7 @@ async function runSitCases(caseIds) {
     renderSitRunSummary(result.summary);
     setStatus(`執行完成 ${result.summary?.completed || 0}/${result.summary?.total || caseIds.length}，成功 ${result.summary?.pass || 0}，失敗 ${result.summary?.fail || 0}`);
   } catch (error) {
-    caseRunOutput.value = pretty({ error: error.message });
+    caseRunOutput.textContent = pretty({ error: error.message });
     setStatus("SIT 執行錯誤", true);
   } finally {
     runSelectedCasesButton.disabled = false;
@@ -368,6 +575,10 @@ function refreshAreqTransactionIds(payload) {
 
 tabButtons.forEach((button) => {
   button.addEventListener("click", () => setActiveTab(button.dataset.tab));
+});
+
+caseViewButtons.forEach((button) => {
+  button.addEventListener("click", () => setCaseControlView(button.dataset.caseView));
 });
 
 selectAllCasesInput?.addEventListener("change", () => {

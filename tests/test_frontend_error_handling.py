@@ -26,11 +26,11 @@ def test_frontend_has_sit_runner_tab_and_controls():
     assert 'id="caseList"' in index_html
     assert 'id="runSelectedCases"' in index_html
     assert 'id="runAllCases"' in index_html
-    assert 'id="caseProgressSummary"' in index_html
     assert 'id="issuerMode"' in index_html
     assert "selection_sms_otp" in index_html
     assert 'id="preferredChallenge"' in index_html
     assert 'id="otpSourceMode"' in index_html
+    assert 'id="otpLookupUrl"' in index_html
     assert 'id="successOtp"' in index_html
     assert 'id="failureOtp"' in index_html
     assert 'id="sitAreqUrl"' in index_html
@@ -47,6 +47,7 @@ def test_frontend_has_sit_runner_tab_and_controls():
     assert "selection_sms_otp" in app_js
     assert "preferredChallenge:" in app_js
     assert "otpSourceMode:" in app_js
+    assert "otpLookupUrl:" in app_js
     assert "successOtp:" in app_js
     assert "failureOtp:" in app_js
     assert "validCardNumber:" in app_js
@@ -54,9 +55,31 @@ def test_frontend_has_sit_runner_tab_and_controls():
     assert "otpFailureMaxAttempts:" in app_js
     assert "caseDelaySeconds:" in app_js
     assert "renderSitRunSummary" in app_js
-    assert "caseImplementation" in app_js
-    assert "已編寫" in app_js
-    assert "待編寫" in app_js
+
+
+def test_sit_controls_use_execution_and_settings_sidebar():
+    index_html = Path("static/index.html").read_text(encoding="utf-8")
+    app_js = Path("static/app.js").read_text(encoding="utf-8")
+    styles = Path("static/styles.css").read_text(encoding="utf-8")
+
+    assert 'data-case-view="caseExecutionPanel"' in index_html
+    assert 'data-case-view="caseSettingsPanel"' in index_html
+    assert 'id="caseExecutionPanel"' in index_html
+    assert 'id="caseSettingsPanel"' in index_html
+    assert 'id="caseProgressSummary"' not in index_html
+    assert "caseImplementation" not in app_js
+    assert "function setCaseControlView" in app_js
+    assert ".case-sidebar" in styles
+    assert ".case-control-view:not(.active)" in styles
+
+
+def test_select_all_checkbox_is_larger_than_case_checkboxes():
+    styles = Path("static/styles.css").read_text(encoding="utf-8")
+
+    assert "#selectAllCases" in styles
+    assert "height: 20px" in styles
+    assert "width: 20px" in styles
+    assert ".case-check" in styles
 
 
 def test_frontend_uses_chinese_visible_labels():
@@ -71,7 +94,6 @@ def test_frontend_uses_chinese_visible_labels():
     assert "OTP 來源" in index_html
     assert "執行完成" in app_js
     assert "通過" in app_js
-    assert "案例編寫進度" in index_html
 
 
 def test_tab_panel_hidden_rule_overrides_workspace_layout():
@@ -79,3 +101,50 @@ def test_tab_panel_hidden_rule_overrides_workspace_layout():
 
     assert ".tab-panel:not(.active)" in styles
     assert styles.rfind(".tab-panel:not(.active)") > styles.rfind(".sit-workspace")
+
+
+def test_sit_case_detail_orders_description_steps_and_result_comparison():
+    index_html = Path("static/index.html").read_text(encoding="utf-8")
+
+    required_ids = (
+        'id="caseDescription"',
+        'id="caseFunctionPoint"',
+        'id="caseModule"',
+        'id="caseStepsList"',
+        'id="caseExpectedOutput"',
+        'id="caseActualOutput"',
+        'id="caseDiffOutput"',
+        'id="caseRunOutput"',
+    )
+    for element_id in required_ids:
+        assert element_id in index_html
+
+    assert 'id="caseTestPoint"' not in index_html
+    assert 'id="caseAutomation"' not in index_html
+    assert index_html.index('id="caseDescription"') < index_html.index('id="caseStepsList"')
+    assert index_html.index('id="caseStepsList"') < index_html.index('id="caseExpectedOutput"')
+    assert index_html.index('id="caseExpectedOutput"') < index_html.index('id="caseActualOutput"')
+
+
+def test_sit_case_detail_displays_acs_trans_id_after_execution():
+    index_html = Path("static/index.html").read_text(encoding="utf-8")
+    app_js = Path("static/app.js").read_text(encoding="utf-8")
+
+    assert 'id="caseAcsTransId"' in index_html
+    assert "function acsTransIdForResult" in app_js
+    assert "caseAcsTransIdValueEl.textContent" in app_js
+    assert 'caseAcsTransIdEl.hidden = !acsTransId' in app_js
+
+
+def test_frontend_renders_actual_results_and_red_differences():
+    app_js = Path("static/app.js").read_text(encoding="utf-8")
+    styles = Path("static/styles.css").read_text(encoding="utf-8")
+
+    assert "function actualResultForCase" in app_js
+    assert "function collectResultDifferences" in app_js
+    assert "function renderResultDifferences" in app_js
+    assert 'className = "difference-item"' in app_js
+    assert "textContent" in app_js
+    assert ".difference-item" in styles
+    assert "color: var(--danger)" in styles
+    assert ".actual-result-output.has-differences" in styles

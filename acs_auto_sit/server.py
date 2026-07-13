@@ -21,7 +21,12 @@ from acs_auto_sit.issuer_modes import (
     resolve_issuer_mode,
     resolve_preferred_challenge,
 )
-from acs_auto_sit.otp_provider import OtpSettings, resolve_otp_value, simulated_otp_for_acs_trans_id
+from acs_auto_sit.otp_provider import (
+    OtpSettings,
+    lookup_acs_generated_otp,
+    resolve_otp_value,
+    simulated_otp_for_acs_trans_id,
+)
 from acs_auto_sit.sit_runner import browser_cases_by_id, dry_run_cases, live_skip_reason, load_browser_case_catalog
 from acs_auto_sit.three_ds import (
     build_first_creq,
@@ -342,6 +347,8 @@ def _run_areq_flow(envelope: dict[str, Any], notification_url: str) -> dict[str,
                     otp_settings=_read_otp_settings(envelope),
                     challenge_action=str(envelope.get("challengeAction") or ""),
                     resend_max_attempts=int(envelope.get("resendMaxAttempts") or 10),
+                    challenge_headers=_challenge_headers_for_payload(payload),
+                    resend_delay_seconds=_read_resend_delay_seconds(envelope),
                 )
         except ValueError as exc:
             draft_error = str(exc)
@@ -1054,6 +1061,7 @@ def _case_areq_record(case_id: str, transaction: dict[str, Any]) -> dict[str, An
 
 def _transaction_for_case(case: dict[str, Any], transaction: dict[str, Any]) -> dict[str, Any]:
     case_transaction = deepcopy(transaction)
+    case_id = str(case.get("id") or "")
     payload = deepcopy(case_transaction.get("payload"))
     if isinstance(payload, dict):
         card_number = _card_number_for_case(case, case_transaction)
@@ -1067,7 +1075,24 @@ def _transaction_for_case(case: dict[str, Any], transaction: dict[str, Any]) -> 
             payload["messageCategory"] = "02"
         elif "pa" in tags:
             payload["messageCategory"] = "01"
+        if "3ri" in tags:
+            payload["messageCategory"] = "02"
+            payload["deviceChannel"] = "03"
+            payload["threeDSRequestorAuthenticationInd"] = "01"
+            payload["threeRIInd"] = "03"
+        purchase_currency = {
+            "case18": "840",
+            "case19": "156",
+            "case20": "978",
+            "case21": "007",
+        }.get(case_id)
+        if purchase_currency:
+            payload["purchaseCurrency"] = purchase_currency
         case_transaction["payload"] = payload
+    if case_id in {"case35", "case36", "case37", "case38", "case43", "case44", "case45", "case46"}:
+        case_transaction["resendDelaySeconds"] = 30
+    elif case_id in {"case39", "case40", "case41", "case42"}:
+        case_transaction["resendDelaySeconds"] = 0
     return case_transaction
 
 
@@ -1082,6 +1107,13 @@ def _browser_language_for_case(case: dict[str, Any]) -> str:
     if "english" in name:
         return "en-US"
     return ""
+
+
+def _challenge_headers_for_payload(payload: Any) -> dict[str, str]:
+    if not isinstance(payload, dict):
+        return {}
+    browser_language = str(payload.get("browserLanguage") or "").strip()
+    return {"Accept-Language": browser_language} if browser_language else {}
 
 
 def _card_number_for_case(case: dict[str, Any], transaction: dict[str, Any]) -> str:
@@ -1183,6 +1215,8 @@ def _post_creq(
     otp_settings: OtpSettings | None = None,
     challenge_action: str = "",
     resend_max_attempts: int = 10,
+    challenge_headers: dict[str, str] | None = None,
+    resend_delay_seconds: float = 0,
 ) -> dict[str, Any]:
     issuer_mode = issuer_mode or resolve_issuer_mode("")
     preferred_challenge = resolve_preferred_challenge(preferred_challenge)
@@ -1191,9 +1225,12 @@ def _post_creq(
     http = post_form(
         url,
         {"creq": b64url_json(creq), "threeDSSessionData": ""},
+        headers=challenge_headers,
         timeout_seconds=timeout_seconds,
     )
     page = parse_challenge_page(http.response_text, url) if http.response_text else None
+    if page is not None:
+        page["requestHeaders"] = dict(challenge_headers or {})
     cres = page.get("cres") if page else None
     response = _creq_response(http, cres, build_next_creq_draft(cres, creq))
     response["challenge"] = page
@@ -1236,6 +1273,7 @@ def _post_creq(
             preferred_challenge,
             challenge_action,
             resend_max_attempts,
+            resend_delay_seconds,
         )
     elif page:
         _advance_challenge_response(
@@ -1252,6 +1290,7 @@ def _post_creq(
             preferred_challenge,
             challenge_action,
             resend_max_attempts,
+            resend_delay_seconds,
         )
 
     return response
@@ -1271,6 +1310,7 @@ def _advance_challenge_response(
     preferred_challenge: str,
     challenge_action: str = "",
     resend_max_attempts: int = 10,
+    resend_delay_seconds: float = 0,
 ) -> None:
     if not page:
         return
@@ -1305,6 +1345,7 @@ def _advance_challenge_response(
                 "otp",
                 challenge_action,
                 resend_max_attempts,
+                resend_delay_seconds,
             )
             return
 
@@ -1354,10 +1395,13 @@ def _advance_challenge_response(
             timeout_seconds,
             notification_url,
             resend_max_attempts,
+            resend_delay_seconds,
         )
         return
 
     if challenge_action == "resend" and page["type"] in {"otp", "html"}:
+        if resend_delay_seconds > 0:
+            time.sleep(resend_delay_seconds)
         resend_response = _submit_challenge_form(
             page,
             _resend_otp_overrides(page),
@@ -1382,17 +1426,27 @@ def _advance_challenge_response(
         current_page = page
         for purpose in otp_attempts:
             acs_trans_id = str((current_page.get("fields") or {}).get("acsTransID") or previous_creq.get("acsTransID") or "")
-            otp_value = resolve_otp_value(purpose, acs_trans_id, otp_settings)
+            otp_value, otp_lookup = _resolve_otp_submission_value(
+                purpose,
+                acs_trans_id,
+                otp_settings,
+                timeout_seconds,
+            )
             otp_response = _submit_challenge_form(
                 current_page,
                 {"challengeValue": otp_value},
                 timeout_seconds,
             )
             submission = {
-                "simulatedOtpUsed": True,
+                "simulatedOtpUsed": otp_lookup.get("source") in {
+                    "configured",
+                    "simulated",
+                    "simulated_fallback",
+                },
                 "otpSourceMode": otp_settings.source_mode,
                 "otpPurpose": purpose,
                 "otpLength": len(otp_value),
+                "otpLookup": otp_lookup,
                 **otp_response,
             }
             response["otpSubmission"] = submission
@@ -1420,6 +1474,7 @@ def _resend_until_limit(
     timeout_seconds: int,
     notification_url: str,
     max_attempts: int,
+    resend_delay_seconds: float = 0,
 ) -> None:
     current_page = page
     max_attempts = max(1, max_attempts)
@@ -1433,6 +1488,8 @@ def _resend_until_limit(
             response["resendLimitReason"] = "Resend control is no longer available."
             return
 
+        if resend_delay_seconds > 0:
+            time.sleep(resend_delay_seconds)
         resend_response = _submit_challenge_form(
             current_page,
             _resend_otp_overrides(current_page),
@@ -1535,8 +1592,8 @@ def _cancel_challenge_overrides(page: dict[str, Any]) -> dict[str, str]:
     fields = page.get("fields") or {}
     for name in ("cancel", "cancelChallenge", "challengeCancel", "cancelTransaction", "cancelButton"):
         if name in fields:
-            return {name: fields.get(name) or "Y"}
-    return {"cancel": "Y"}
+            return {name: "true" if name == "cancel" else "Y"}
+    return {"cancel": "true"}
 
 
 def _resend_otp_overrides(page: dict[str, Any]) -> dict[str, str]:
@@ -1567,8 +1624,16 @@ def _submit_challenge_form(
 ) -> dict[str, Any]:
     fields = dict(page.get("fields") or {})
     fields.update(overrides)
-    http = post_form(page["formAction"], fields, timeout_seconds=timeout_seconds)
+    request_headers = dict(page.get("requestHeaders") or {})
+    http = post_form(
+        page["formAction"],
+        fields,
+        headers=request_headers,
+        timeout_seconds=timeout_seconds,
+    )
     next_page = parse_challenge_page(http.response_text, page["formAction"]) if http.response_text else None
+    if next_page is not None:
+        next_page["requestHeaders"] = request_headers
     cres = next_page.get("cres") if next_page else None
     return {
         "ok": http.error is None,
@@ -1592,13 +1657,40 @@ def _read_otp_settings(envelope: dict[str, Any]) -> OtpSettings:
     success_otp = str(envelope.get("successOtp") or envelope.get("simulatedOtp") or "123456")
     failure_otp = str(envelope.get("failureOtp") or "000000")
     source_mode = str(envelope.get("otpSourceMode") or "customer_generated")
+    lookup_url_template = str(
+        envelope.get("otpLookupUrl")
+        or "https://acscloud-test.hitrust-us.com/acs-sit-info/api/sit/otp/{acsTrandId}"
+    )
     if source_mode not in {"customer_generated", "acs_generated"}:
         raise ValueError("otpSourceMode must be customer_generated or acs_generated.")
     return OtpSettings(
         source_mode=source_mode,
         success_otp=success_otp,
         failure_otp=failure_otp,
+        lookup_url_template=lookup_url_template,
     )
+
+
+def _resolve_otp_submission_value(
+    purpose: str,
+    acs_trans_id: str,
+    otp_settings: OtpSettings,
+    timeout_seconds: int,
+) -> tuple[str, dict[str, Any]]:
+    normalized_purpose = (purpose or "success").strip()
+    if normalized_purpose == "success" and otp_settings.source_mode == "acs_generated":
+        return lookup_acs_generated_otp(
+            acs_trans_id,
+            otp_settings,
+            timeout_seconds=timeout_seconds,
+        )
+    otp_value = resolve_otp_value(normalized_purpose, acs_trans_id, otp_settings)
+    return otp_value, {
+        "source": "configured" if otp_settings.source_mode == "customer_generated" else "direct",
+        "requestedAcsTransID": acs_trans_id,
+        "resolvedOtp": otp_value,
+        "lookupUsed": False,
+    }
 
 
 def _read_otp_failure_max_attempts(envelope: dict[str, Any]) -> int:
@@ -1612,6 +1704,15 @@ def _read_otp_failure_max_attempts(envelope: dict[str, Any]) -> int:
 
 def _read_case_delay_seconds(envelope: dict[str, Any]) -> float:
     raw_value = envelope.get("caseDelaySeconds", 0)
+    try:
+        delay = float(raw_value)
+    except (TypeError, ValueError):
+        delay = 0.0
+    return max(0.0, delay)
+
+
+def _read_resend_delay_seconds(envelope: dict[str, Any]) -> float:
+    raw_value = envelope.get("resendDelaySeconds", 0)
     try:
         delay = float(raw_value)
     except (TypeError, ValueError):

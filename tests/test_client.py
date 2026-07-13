@@ -3,7 +3,7 @@ import socket
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 
-from acs_auto_sit.client import post_payload
+from acs_auto_sit.client import get_json, post_payload
 
 
 class RecordingAcsHandler(BaseHTTPRequestHandler):
@@ -21,6 +21,23 @@ class RecordingAcsHandler(BaseHTTPRequestHandler):
             "transStatus": "C",
             "acsTransID": "acs-trans-1",
         }
+        encoded = json.dumps(response).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def log_message(self, format, *args):
+        return
+
+
+class RecordingOtpHandler(BaseHTTPRequestHandler):
+    received_method = ""
+
+    def do_GET(self):
+        self.__class__.received_method = "GET"
+        response = {"otp": "654321"}
         encoded = json.dumps(response).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -77,6 +94,25 @@ def test_post_payload_bypasses_system_proxy_by_default(monkeypatch):
 
     assert result.status_code == 200
     assert result.error is None
+
+
+def test_get_json_fetches_json_response():
+    server = ThreadingHTTPServer(("127.0.0.1", 0), RecordingOtpHandler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    url = f"http://127.0.0.1:{server.server_port}/otp/acs-trans-1"
+
+    try:
+        result = get_json(url, timeout_seconds=5)
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
+
+    assert RecordingOtpHandler.received_method == "GET"
+    assert result.method == "GET"
+    assert result.status_code == 200
+    assert result.response_json == {"otp": "654321"}
 
 
 def _find_closed_port():

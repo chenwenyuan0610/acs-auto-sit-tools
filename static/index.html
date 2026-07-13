@@ -29,7 +29,7 @@
 
         <label>
           AReq URL
-          <input id="areqUrl" spellcheck="false" value="https://acscloud-test.hitrust-us.com/acs-auth-v3/auth/M/220/0c57e472-e555-2c0a-e7cf-2d6a2455fbc8/123/areq" />
+          <input id="areqUrl" spellcheck="false" value="https://acscloud-test.hitrust-us.com/acs-auth-v3/auth/V/220/eff82784-e641-8477-3b5b-f14c2ed2ee10/123/areq" />
         </label>
 
         <label>
@@ -125,7 +125,7 @@
     "chAccAgeInd": "02",
     "chAccDate": "20260506"
   },
-  "acctNumber": "5678910000000000",
+  "acctNumber": "4771048901645588",
   "billAddrCity": "Drury",
   "billAddrCountry": "554",
   "billAddrLine1": "327 Fitzgerald Road",
@@ -179,6 +179,13 @@
 
     <main id="sitRunner" class="sit-workspace tab-panel">
       <section class="panel case-panel">
+        <div class="case-panel-shell">
+          <nav class="case-sidebar" role="tablist" aria-label="SIT 控制">
+            <button class="case-sidebar-button active" type="button" role="tab" aria-selected="true" aria-controls="caseExecutionPanel" data-case-view="caseExecutionPanel">執行案例</button>
+            <button class="case-sidebar-button" type="button" role="tab" aria-selected="false" aria-controls="caseSettingsPanel" data-case-view="caseSettingsPanel">設定</button>
+          </nav>
+          <div class="case-panel-content">
+            <section id="caseExecutionPanel" class="case-control-view active" role="tabpanel">
         <div class="toolbar">
           <button id="runSelectedCases" class="primary" type="button">執行選取案例</button>
           <button id="runAllCases" type="button">全部執行</button>
@@ -190,26 +197,25 @@
           </label>
           <span id="caseCount" class="case-count">0 個案例</span>
         </div>
-        <div class="progress-box">
-          <strong>案例編寫進度</strong>
-          <span id="caseProgressSummary">尚未載入</span>
-        </div>
         <div id="sitRunSummary" class="progress-box">
           <strong>執行統計</strong>
           <span>尚未執行</span>
         </div>
+              <div id="caseList" class="case-list"></div>
+            </section>
+            <section id="caseSettingsPanel" class="case-control-view" role="tabpanel" hidden>
         <div class="sit-options">
           <label>
             SIT AReq URL
-            <input id="sitAreqUrl" spellcheck="false" value="https://acscloud-test.hitrust-us.com/acs-auth-v3/auth/M/220/0c57e472-e555-2c0a-e7cf-2d6a2455fbc8/123/areq" />
+            <input id="sitAreqUrl" spellcheck="false" value="https://acscloud-test.hitrust-us.com/acs-auth-v3/auth/V/220/eff82784-e641-8477-3b5b-f14c2ed2ee10/123/areq" />
           </label>
           <label>
             正確卡號
-            <input id="validCardNumber" spellcheck="false" value="5678910000000000" />
+            <input id="validCardNumber" spellcheck="false" value="4771048901645588" />
           </label>
           <label>
             失敗卡號
-            <input id="invalidCardNumber" spellcheck="false" value="4000000000000002" />
+            <input id="invalidCardNumber" spellcheck="false" value="4771048901645589" />
           </label>
           <label>
             OTP 失敗次數上限
@@ -242,8 +248,12 @@
             OTP 來源
             <select id="otpSourceMode">
               <option value="customer_generated">客戶產生 / 客戶驗證</option>
-              <option value="acs_generated">ACS 產生 / ACS 驗證</option>
+              <option value="acs_generated" selected>ACS 產生 / ACS 驗證</option>
             </select>
+          </label>
+          <label>
+            OTP Lookup URL
+            <input id="otpLookupUrl" spellcheck="false" value="https://acscloud-test.hitrust-us.com/acs-sit-info/api/sit/otp/{acsTrandId}" />
           </label>
           <label>
             成功 OTP
@@ -254,7 +264,9 @@
             <input id="failureOtp" spellcheck="false" value="000000" />
           </label>
         </div>
-        <div id="caseList" class="case-list"></div>
+            </section>
+          </div>
+        </div>
       </section>
 
       <section class="panel case-detail-panel">
@@ -262,23 +274,52 @@
           <div>
             <h2 id="caseTitle">選擇案例</h2>
             <p id="caseSubtitle">瀏覽器 SIT 案例細節與執行結果</p>
+            <div id="caseAcsTransId" class="case-tracking" hidden>
+              <span>ACS Trans ID</span>
+              <code id="caseAcsTransIdValue"></code>
+            </div>
           </div>
           <span id="caseStatus" class="case-status pending">待執行</span>
         </div>
-        <div class="detail-grid">
-          <label>
-            步驟
-            <textarea id="caseStepsOutput" spellcheck="false" readonly></textarea>
-          </label>
-          <label>
-            預期結果
-            <textarea id="caseExpectedOutput" spellcheck="false" readonly></textarea>
-          </label>
-        </div>
-        <label>
-          執行細節
-          <textarea id="caseRunOutput" class="evidence" spellcheck="false" readonly></textarea>
-        </label>
+
+        <section id="caseDescription" class="case-description" aria-labelledby="caseDescriptionTitle">
+          <h3 id="caseDescriptionTitle">測試案例說明</h3>
+          <dl class="case-description-grid">
+            <div>
+              <dt>測試項目</dt>
+              <dd id="caseFunctionPoint">-</dd>
+            </div>
+            <div>
+              <dt>模組</dt>
+              <dd id="caseModule">-</dd>
+            </div>
+          </dl>
+        </section>
+
+        <section class="case-detail-section" aria-labelledby="caseStepsTitle">
+          <h3 id="caseStepsTitle">測試步驟</h3>
+          <ol id="caseStepsList" class="case-steps-list"></ol>
+        </section>
+
+        <section class="case-detail-section" aria-labelledby="caseComparisonTitle">
+          <h3 id="caseComparisonTitle">結果比對</h3>
+          <div class="result-comparison">
+            <section class="result-column expected-result" aria-labelledby="caseExpectedTitle">
+              <h4 id="caseExpectedTitle">Excel 預期結果</h4>
+              <pre id="caseExpectedOutput" class="result-json"></pre>
+            </section>
+            <section class="result-column actual-result" aria-labelledby="caseActualTitle">
+              <h4 id="caseActualTitle">實際結果</h4>
+              <pre id="caseActualOutput" class="result-json actual-result-output"></pre>
+            </section>
+          </div>
+          <div id="caseDiffOutput" class="result-differences" aria-live="polite"></div>
+        </section>
+
+        <details class="case-run-details">
+          <summary>完整執行細節</summary>
+          <pre id="caseRunOutput" class="raw-result-output"></pre>
+        </details>
       </section>
     </main>
 

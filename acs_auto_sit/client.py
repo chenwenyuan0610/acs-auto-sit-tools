@@ -45,6 +45,7 @@ def post_payload(
         with opener.open(req, timeout=timeout_seconds) as response:
             response_body = response.read().decode("utf-8", errors="replace")
             return _build_result(
+                method="POST",
                 url=url,
                 headers=headers,
                 payload=payload,
@@ -56,6 +57,7 @@ def post_payload(
     except error.HTTPError as exc:
         response_body = exc.read().decode("utf-8", errors="replace")
         return _build_result(
+            method="POST",
             url=url,
             headers=headers,
             payload=payload,
@@ -67,6 +69,7 @@ def post_payload(
         )
     except error.URLError as exc:
         return _build_result(
+            method="POST",
             url=url,
             headers=headers,
             payload=payload,
@@ -98,6 +101,7 @@ def post_form(
         with opener.open(req, timeout=timeout_seconds) as response:
             response_body = response.read().decode("utf-8", errors="replace")
             return _build_result(
+                method="POST",
                 url=url,
                 headers=headers,
                 payload=form,
@@ -109,6 +113,7 @@ def post_form(
     except error.HTTPError as exc:
         response_body = exc.read().decode("utf-8", errors="replace")
         return _build_result(
+            method="POST",
             url=url,
             headers=headers,
             payload=form,
@@ -120,6 +125,7 @@ def post_form(
         )
     except error.URLError as exc:
         return _build_result(
+            method="POST",
             url=url,
             headers=headers,
             payload=form,
@@ -131,7 +137,61 @@ def post_form(
         )
 
 
+def get_json(
+    url: str,
+    headers: dict[str, str] | None = None,
+    timeout_seconds: int = 30,
+    use_system_proxy: bool = False,
+) -> PostResult:
+    headers = dict(headers or {})
+    headers.setdefault("Accept", "application/json")
+
+    started = time.perf_counter()
+    req = request.Request(url, headers=headers, method="GET")
+    opener = request.build_opener() if use_system_proxy else request.build_opener(request.ProxyHandler({}))
+
+    try:
+        with opener.open(req, timeout=timeout_seconds) as response:
+            response_body = response.read().decode("utf-8", errors="replace")
+            return _build_result(
+                method="GET",
+                url=url,
+                headers=headers,
+                payload=None,
+                status_code=response.status,
+                response_headers=dict(response.headers.items()),
+                response_text=response_body,
+                elapsed_ms=_elapsed_ms(started),
+            )
+    except error.HTTPError as exc:
+        response_body = exc.read().decode("utf-8", errors="replace")
+        return _build_result(
+            method="GET",
+            url=url,
+            headers=headers,
+            payload=None,
+            status_code=exc.code,
+            response_headers=dict(exc.headers.items()),
+            response_text=response_body,
+            elapsed_ms=_elapsed_ms(started),
+            error=str(exc),
+        )
+    except error.URLError as exc:
+        return _build_result(
+            method="GET",
+            url=url,
+            headers=headers,
+            payload=None,
+            status_code=None,
+            response_headers={},
+            response_text="",
+            elapsed_ms=_elapsed_ms(started),
+            error=str(exc.reason),
+        )
+
+
 def _build_result(
+    method: str,
     url: str,
     headers: dict[str, str],
     payload: Any,
@@ -142,7 +202,7 @@ def _build_result(
     error: str | None = None,
 ) -> PostResult:
     return PostResult(
-        method="POST",
+        method=method,
         url=url,
         request_headers=headers,
         request_body=payload,

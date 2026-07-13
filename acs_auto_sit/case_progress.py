@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
-
-from acs_auto_sit.case_plan import build_direct_otp_case_plan, build_selection_sms_otp_case_plan
-
 
 TRACKED_ISSUER_MODES = [
     "selection_sms_oob",
@@ -19,9 +18,50 @@ PENDING_ISSUER_MODES = [
     "default_oob_can_switch_otp",
 ]
 
+DEFAULT_CASE_PROGRESS_PATH = (
+    Path(__file__).resolve().parent.parent / "data" / "browser_case_progress.json"
+)
 
-def build_browser_case_progress(cases: list[dict[str, Any]]) -> dict[str, Any]:
-    case_progress = [_case_progress(case) for case in cases]
+
+def load_case_progress_records(
+    path: Path = DEFAULT_CASE_PROGRESS_PATH,
+) -> dict[str, dict[str, Any]]:
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise ValueError(f"Invalid case progress JSON in {path}: {error.msg}") from error
+    if not isinstance(payload, dict) or not isinstance(payload.get("cases"), dict):
+        raise ValueError(
+            f"Invalid case progress structure in {path}: cases must be an object"
+        )
+
+    records: dict[str, dict[str, Any]] = {}
+    for case_id, record in payload["cases"].items():
+        if not isinstance(case_id, str) or not isinstance(record, dict):
+            continue
+        completed_modes = [
+            mode
+            for mode in record.get("completedModes") or []
+            if mode in TRACKED_ISSUER_MODES
+        ]
+        records[case_id] = {
+            "completedModes": completed_modes,
+            "note": str(record.get("note") or ""),
+        }
+    return records
+
+
+def build_browser_case_progress(
+    cases: list[dict[str, Any]],
+    records: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    progress_records = load_case_progress_records() if records is None else records
+    case_progress = [
+        _case_progress(case, progress_records.get(str(case.get("id") or ""), {}))
+        for case in cases
+    ]
     direct_otp_completed = sum(
         1
         for item in case_progress
@@ -44,24 +84,23 @@ def build_browser_case_progress(cases: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def case_progress_by_id(cases: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    progress = build_browser_case_progress(cases)
+def case_progress_by_id(
+    cases: list[dict[str, Any]],
+    records: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, dict[str, Any]]:
+    progress = build_browser_case_progress(cases, records)
     return {item["caseId"]: item for item in progress["cases"]}
 
 
-def _case_progress(case: dict[str, Any]) -> dict[str, Any]:
-    direct_otp_plan = build_direct_otp_case_plan(case)
-    selection_sms_otp_plan = build_selection_sms_otp_case_plan(case)
-    direct_otp_done = direct_otp_plan.get("coverage") == "implemented" and bool(direct_otp_plan.get("actions"))
-    selection_sms_otp_done = (
-        selection_sms_otp_plan.get("coverage") == "implemented"
-        and bool(selection_sms_otp_plan.get("actions"))
-    )
-    completed_modes = []
-    if direct_otp_done:
-        completed_modes.append("direct_otp")
-    if selection_sms_otp_done:
-        completed_modes.append("selection_sms_otp")
+def _case_progress(
+    case: dict[str, Any],
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    completed_modes = [
+        mode
+        for mode in record.get("completedModes") or []
+        if mode in TRACKED_ISSUER_MODES
+    ]
     pending_modes = [mode for mode in TRACKED_ISSUER_MODES if mode not in completed_modes]
     status = "completed" if not pending_modes else "partial" if completed_modes else "pending"
 
@@ -70,14 +109,15 @@ def _case_progress(case: dict[str, Any]) -> dict[str, Any]:
         "status": status,
         "completedModes": completed_modes,
         "pendingModes": pending_modes,
+        "note": str(record.get("note") or ""),
         "directOtp": {
-            "status": "completed" if direct_otp_done else "pending",
-            "actionCount": len(direct_otp_plan.get("actions") or []),
-            "actions": direct_otp_plan.get("actions") or [],
+            "status": "completed" if "direct_otp" in completed_modes else "pending",
+            "actionCount": 0,
+            "actions": [],
         },
         "selectionSmsOtp": {
-            "status": "completed" if selection_sms_otp_done else "pending",
-            "actionCount": len(selection_sms_otp_plan.get("actions") or []),
-            "actions": selection_sms_otp_plan.get("actions") or [],
+            "status": "completed" if "selection_sms_otp" in completed_modes else "pending",
+            "actionCount": 0,
+            "actions": [],
         },
     }

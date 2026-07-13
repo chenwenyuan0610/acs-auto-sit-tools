@@ -1,0 +1,212 @@
+{
+  "version": 1,
+  "trackedIssuerModes": [
+    "selection_sms_oob",
+    "selection_sms_otp",
+    "direct_otp",
+    "direct_oob",
+    "default_oob_can_switch_otp"
+  ],
+  "cases": {
+    "case01": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case02": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case03": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case04": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case05": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case06": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case07": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case08": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case09": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case10": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case11": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case12": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case13": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case14": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case15": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case16": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case17": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case18": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case19": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case20": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case21": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case22": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case23": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case24": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case25": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case26": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case27": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case28": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case29": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case30": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case31": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case32": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case33": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case34": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case35": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case36": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case37": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case38": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case39": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case40": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case41": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case42": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case43": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case44": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case45": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case46": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case47": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case48": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case49": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    },
+    "case50": {
+      "completedModes": ["direct_otp", "selection_sms_otp"],
+      "note": ""
+    }
+  }
+}

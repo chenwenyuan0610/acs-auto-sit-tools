@@ -4,7 +4,11 @@ import json
 from pathlib import Path
 from typing import Any
 
-from acs_auto_sit.case_progress import build_browser_case_progress, case_progress_by_id
+from acs_auto_sit.case_progress import (
+    DEFAULT_CASE_PROGRESS_PATH,
+    build_browser_case_progress,
+    load_case_progress_records,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -23,9 +27,6 @@ LIVE_RUNNER_SUPPORTED_CASE_IDS = {
     "case11",
     "case12",
     "case14",
-    "case15",
-    "case16",
-    "case17",
     "case18",
     "case19",
     "case20",
@@ -53,8 +54,22 @@ LIVE_RUNNER_SUPPORTED_CASE_IDS = {
     "case46",
 }
 
+LIVE_RUNNER_EXCLUDED_CASE_REASONS = {
+    "case15": "Case is not included in this live run because it requires ACS Admin payment-network state changes.",
+    "case16": "Case is not included in this live run because it requires ACS Admin currency-minor-unit state changes.",
+    "case17": "Case is not included in this live run because it requires ACS Admin currency-minor-unit state changes.",
+    "case22": "Case is not included in this live run because it requires a long challenge-timeout wait.",
+    "case47": "Case is not included in this live run (manual_or_slow: OTP expiration wait).",
+    "case48": "Case is not included in this live run (manual_or_slow: OTP expiration wait).",
+    "case49": "Case is not included in this live run (manual_or_slow: OTP expiration wait).",
+    "case50": "Case is not included in this live run (manual_or_slow: OTP expiration wait).",
+}
 
-def load_browser_case_catalog(path: Path = DEFAULT_BROWSER_CASES_PATH) -> dict[str, Any]:
+
+def load_browser_case_catalog(
+    path: Path = DEFAULT_BROWSER_CASES_PATH,
+    progress_path: Path = DEFAULT_CASE_PROGRESS_PATH,
+) -> dict[str, Any]:
     if not path.is_file():
         return {
             "sourceWorkbook": "",
@@ -64,7 +79,10 @@ def load_browser_case_catalog(path: Path = DEFAULT_BROWSER_CASES_PATH) -> dict[s
         }
     data = json.loads(path.read_text(encoding="utf-8"))
     cases = [_case_summary(case) for case in data.get("cases") or []]
-    progress = build_browser_case_progress(cases)
+    progress = build_browser_case_progress(
+        cases,
+        load_case_progress_records(progress_path),
+    )
     progress_by_id = {item["caseId"]: item for item in progress["cases"]}
     cases = [
         {
@@ -127,7 +145,10 @@ def browser_cases_by_id(path: Path = DEFAULT_BROWSER_CASES_PATH) -> dict[str, di
 
 
 def live_skip_reason(case: dict[str, Any]) -> str | None:
-    if case.get("id") in LIVE_RUNNER_SUPPORTED_CASE_IDS:
+    case_id = str(case.get("id") or "")
+    if case_id in LIVE_RUNNER_EXCLUDED_CASE_REASONS:
+        return LIVE_RUNNER_EXCLUDED_CASE_REASONS[case_id]
+    if case_id in LIVE_RUNNER_SUPPORTED_CASE_IDS:
         return None
 
     automation = case.get("automation") or {}
