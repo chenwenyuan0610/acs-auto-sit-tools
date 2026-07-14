@@ -3,6 +3,89 @@ from __future__ import annotations
 from typing import Any
 
 
+CHALLENGE_VALUES = {"sms": "1", "email": "2", "oob": "3"}
+
+
+def build_case_plan(case: dict[str, Any], issuer_mode: dict[str, Any]) -> dict[str, Any]:
+    flow = case.get("flow") or {}
+    if not flow:
+        if str(issuer_mode.get("id") or "").startswith("selection_"):
+            return build_selection_sms_otp_case_plan(case)
+        return build_direct_otp_case_plan(case)
+
+    kind = str(flow.get("kind") or "")
+    destination = str(flow.get("destination") or "")
+    if kind == "selection_page":
+        actions = [
+            {"type": "send_areq"},
+            {"type": "assert_authentication_mode_page"},
+            {"type": "expect_prompt"},
+        ]
+        return _flow_plan(case, issuer_mode, actions, "auto", auto_select=False)
+
+    if kind == "oob_switch_sms":
+        actions = [
+            {"type": "send_areq"},
+            {"type": "assert_oob_page"},
+            {"type": "switch_to_otp"},
+            {"type": "lookup_otp"},
+            {"type": "submit_otp", "otpPurpose": "success"},
+            {"type": "expect_prompt"},
+        ]
+        return _flow_plan(case, issuer_mode, actions, "sms")
+
+    selection_actions: list[dict[str, Any]] = []
+    if kind == "selection_branch":
+        selection_actions.append(
+            {
+                "type": "choose_authentication_mode",
+                "preferredChallenge": destination,
+                "challengeValue": CHALLENGE_VALUES.get(destination, ""),
+                "label": destination.upper(),
+            }
+        )
+
+    if destination == "oob":
+        actions = [
+            {"type": "send_areq"},
+            *selection_actions,
+            {"type": "assert_oob_page"},
+            {"type": "expect_prompt"},
+        ]
+    else:
+        direct_actions = build_direct_otp_case_plan(case).get("actions") or []
+        actions = []
+        for action in direct_actions:
+            actions.append(action)
+            if action.get("type") == "send_areq":
+                actions.extend(selection_actions)
+    return _flow_plan(
+        case,
+        issuer_mode,
+        actions,
+        destination or str(issuer_mode.get("defaultPreferredChallenge") or "auto"),
+        auto_select=kind == "selection_branch",
+    )
+
+
+def _flow_plan(
+    case: dict[str, Any],
+    issuer_mode: dict[str, Any],
+    actions: list[dict[str, Any]],
+    preferred_challenge: str,
+    *,
+    auto_select: bool = True,
+) -> dict[str, Any]:
+    return {
+        "caseId": case.get("id", ""),
+        "mode": str(issuer_mode.get("id") or ""),
+        "coverage": "implemented",
+        "preferredChallenge": preferred_challenge,
+        "autoSelectAuthenticationMode": auto_select,
+        "actions": actions,
+    }
+
+
 def build_direct_otp_case_plan(case: dict[str, Any]) -> dict[str, Any]:
     expected = case.get("expected") or {}
     messages = expected.get("messages") or {}

@@ -7,6 +7,9 @@ from threading import Thread
 from urllib.parse import parse_qs
 from urllib import request
 
+import pytest
+
+import acs_auto_sit.server as server_module
 from acs_auto_sit.server import _authentication_mode_value, create_server
 
 
@@ -323,6 +326,41 @@ def test_selection_sms_otp_mode_always_selects_sms_challenge_value():
     )
 
     assert selected == "1"
+
+
+@pytest.mark.parametrize(
+    ("preferred_challenge", "expected_value"),
+    (("sms", "sms-x"), ("email", "email-x"), ("oob", "oob-x")),
+)
+def test_authentication_mode_selection_uses_option_labels(preferred_challenge, expected_value):
+    page = {
+        "radioOptions": [
+            {"name": "challengeValue", "value": "oob-x", "label": "Mobile App approval"},
+            {"name": "challengeValue", "value": "email-x", "label": "Email OTP"},
+            {"name": "challengeValue", "value": "sms-x", "label": "SMS OTP"},
+        ]
+    }
+
+    selected = _authentication_mode_value(
+        page,
+        {"id": "selection_sms_email_oob", "defaultPreferredChallenge": "sms"},
+        preferred_challenge,
+    )
+
+    assert selected == expected_value
+
+
+def test_visible_text_includes_page_returned_after_oob_switch():
+    visible_text = server_module._visible_text_from_run_result(
+        {
+            "autoCreq": {
+                "challenge": {"visibleText": ["Approve in app"]},
+                "oobSubmission": {"challenge": {"visibleText": ["Enter SMS OTP"]}},
+            }
+        }
+    )
+
+    assert visible_text == ["Approve in app", "Enter SMS OTP"]
 
 
 def test_notification_api_decodes_form_encoded_cres():

@@ -761,6 +761,79 @@ def test_generated_wording_case_uses_locale_and_base_case_metadata():
     assert server_module.live_skip_reason(generated_case) is None
 
 
+def test_live_runner_uses_generated_email_branch_destination(monkeypatch, tmp_path):
+    profile_path = tmp_path / "raw-profile.json"
+    wordings = []
+    for source_sheet, code, fields in (
+        ("Single Select", "SELECT_AUTHENTICATION_METHOD", {"challenge_title": "Choose method", "challenge_message": "Choose Email"}),
+        ("Email", "SEND_EMAIL_OTP", {"challenge_title": "Email verification", "challenge_message": "Enter Email OTP"}),
+    ):
+        for field_key, content in fields.items():
+            wordings.append(
+                {
+                    "issuerId": "default",
+                    "issuerMode": "",
+                    "deviceChannel": "BROWSER",
+                    "messageCategory": "PA",
+                    "sourceSheet": source_sheet,
+                    "wordingCode": code,
+                    "locale": "en_US",
+                    "fieldKey": field_key,
+                    "content": content,
+                }
+            )
+    profile_path.write_text(
+        json.dumps(
+            {
+                "sourceFormat": "challenge_ui_info",
+                "defaultSupportedLocales": ["zh_TW", "en_US", "zh_CN"],
+                "issuers": {
+                    "default": {
+                        "id": "default",
+                        "supportedLocales": ["zh_TW", "en_US", "zh_CN"],
+                    }
+                },
+                "wordings": wordings,
+            }
+        ),
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_run_areq_flow(envelope, notification_url):
+        calls.append(envelope)
+        return {
+            "ok": True,
+            "ares": {"transStatus": "C"},
+            "autoCreq": {
+                "challenge": {"visibleText": ["Email verification", "Enter Email OTP"]},
+                "cres": None,
+            },
+            "http": {"request_body": envelope["payload"]},
+        }
+
+    monkeypatch.setattr(server_module, "_run_areq_flow", fake_run_areq_flow)
+
+    result = server_module._run_live_sit_cases(
+        ["ui_select_email_pa_send_email_otp_en_US"],
+        {
+            "url": "http://127.0.0.1/not-used",
+            "headers": {"Content-Type": "application/json"},
+            "payload": {"messageType": "AReq", "messageVersion": "2.2.0"},
+            "timeoutSeconds": 1,
+        },
+        "http://127.0.0.1/api/notification",
+        resolve_issuer_mode("selection_sms_email"),
+        "auto",
+        wording_profiles_path=profile_path,
+    )[0]
+
+    assert calls[0]["preferredChallenge"] == "email"
+    assert calls[0]["autoSelectSms"] is True
+    assert result["details"]["casePlan"]["preferredChallenge"] == "email"
+    assert result["status"] == "pass"
+
+
 def test_missing_prompt_text_accepts_excel_placeholders_and_html_breaks():
     expected = [
         "The verification code has been sent via SMS to {0}.<br><br>"

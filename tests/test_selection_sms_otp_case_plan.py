@@ -1,4 +1,7 @@
-from acs_auto_sit.case_plan import build_selection_sms_otp_case_plan
+import pytest
+
+from acs_auto_sit.case_plan import build_case_plan, build_selection_sms_otp_case_plan
+from acs_auto_sit.issuer_modes import resolve_issuer_mode
 from acs_auto_sit.sit_runner import load_browser_case_catalog
 
 
@@ -41,6 +44,80 @@ def test_selection_sms_otp_case_plan_chooses_sms_before_otp_actions():
         "failure",
         "success",
     ]
+
+
+@pytest.mark.parametrize(
+    ("mode_id", "destination", "challenge_value"),
+    (
+        ("selection_sms_oob", "sms", "1"),
+        ("selection_sms_email", "email", "2"),
+        ("selection_email_oob", "oob", "3"),
+    ),
+)
+def test_flow_aware_case_plan_selects_requested_destination(mode_id, destination, challenge_value):
+    case = {
+        "id": f"ui_select_{destination}",
+        "functionPoint": "Generated challenge UI",
+        "expected": {"prompts": ["Challenge title"]},
+        "wordingScenario": "initial_challenge",
+        "flow": {
+            "kind": "selection_branch",
+            "destination": destination,
+            "stages": [{"type": "single_select"}, {"type": destination}],
+        },
+    }
+
+    plan = build_case_plan(case, resolve_issuer_mode(mode_id))
+
+    selection = next(action for action in plan["actions"] if action["type"] == "choose_authentication_mode")
+    assert selection["preferredChallenge"] == destination
+    assert selection["challengeValue"] == challenge_value
+    assert plan["preferredChallenge"] == destination
+
+
+def test_flow_aware_case_plan_runs_oob_to_sms_switch_before_otp_submission():
+    case = {
+        "id": "ui_oob_switch_sms",
+        "functionPoint": "Generated OOB switch",
+        "expected": {"prompts": ["SMS challenge"]},
+        "flow": {
+            "kind": "oob_switch_sms",
+            "destination": "sms",
+            "switchCreq": True,
+            "stages": [{"type": "oob"}, {"type": "sms"}],
+        },
+    }
+
+    plan = build_case_plan(case, resolve_issuer_mode("default_oob_can_switch_otp"))
+
+    action_types = [action["type"] for action in plan["actions"]]
+    assert action_types == [
+        "send_areq",
+        "assert_oob_page",
+        "switch_to_otp",
+        "lookup_otp",
+        "submit_otp",
+        "expect_prompt",
+    ]
+    assert plan["preferredChallenge"] == "sms"
+
+
+def test_flow_aware_oob_case_does_not_submit_otp():
+    case = {
+        "id": "ui_oob",
+        "functionPoint": "Generated OOB",
+        "expected": {"prompts": ["Approve in app"]},
+        "flow": {
+            "kind": "direct",
+            "destination": "oob",
+            "stages": [{"type": "oob"}],
+        },
+    }
+
+    plan = build_case_plan(case, resolve_issuer_mode("direct_oob"))
+
+    assert [action["type"] for action in plan["actions"]] == ["send_areq", "assert_oob_page", "expect_prompt"]
+    assert plan["preferredChallenge"] == "oob"
 
 
 def _case_by_id(case_id: str):

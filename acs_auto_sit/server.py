@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from acs_auto_sit.challenge import b64url_json, decode_b64url_json, parse_challenge_page
 from acs_auto_sit.client import post_form, post_payload
-from acs_auto_sit.case_plan import build_direct_otp_case_plan, build_selection_sms_otp_case_plan
+from acs_auto_sit.case_plan import build_case_plan
 from acs_auto_sit.issuer_modes import (
     issuer_mode_catalog,
     resolve_issuer_mode,
@@ -517,7 +517,11 @@ def _run_live_sit_cases(
 
         case_transaction = _transaction_for_case(case, transaction)
         skip_reason = live_skip_reason(case)
-        case_plan = _case_plan_for_issuer_mode(case, issuer_mode["id"])
+        case_plan = _case_plan_for_issuer_mode(case, issuer_mode)
+        effective_preferred_challenge = _preferred_challenge_for_case_plan(
+            case_plan,
+            preferred_challenge,
+        )
         case_areq = _case_areq_record(case_id, case_transaction)
         if skip_reason:
             results.append(
@@ -530,7 +534,7 @@ def _run_live_sit_cases(
                         "expected": case.get("expected", {}),
                         "automation": case.get("automation", {}),
                         "issuerMode": issuer_mode,
-                        "preferredChallenge": preferred_challenge,
+                        "preferredChallenge": effective_preferred_challenge,
                         "casePlan": case_plan,
                         "caseAreq": case_areq,
                     },
@@ -540,11 +544,11 @@ def _run_live_sit_cases(
 
         envelope = {
             **case_transaction,
-            "autoSelectSms": True,
+            "autoSelectSms": bool((case_plan or {}).get("autoSelectAuthenticationMode", True)),
             "autoSubmitOtp": True,
             "simulatedOtp": str(case_transaction.get("simulatedOtp") or "123456"),
             "issuerMode": issuer_mode["id"],
-            "preferredChallenge": preferred_challenge,
+            "preferredChallenge": effective_preferred_challenge,
         }
         if case_plan:
             envelope["otpAttempts"] = [
@@ -574,7 +578,7 @@ def _run_live_sit_cases(
                     envelope,
                     notification_url,
                     issuer_mode,
-                    preferred_challenge,
+                    effective_preferred_challenge,
                     case_areq,
                 )
             )
@@ -589,7 +593,7 @@ def _run_live_sit_cases(
                     envelope,
                     notification_url,
                     issuer_mode,
-                    preferred_challenge,
+                    effective_preferred_challenge,
                     case_areq,
                 )
             )
@@ -604,7 +608,7 @@ def _run_live_sit_cases(
                     envelope,
                     notification_url,
                     issuer_mode,
-                    preferred_challenge,
+                    effective_preferred_challenge,
                     case_areq,
                 )
             )
@@ -619,7 +623,7 @@ def _run_live_sit_cases(
                     envelope,
                     notification_url,
                     issuer_mode,
-                    preferred_challenge,
+                    effective_preferred_challenge,
                     case_areq,
                 )
             )
@@ -641,7 +645,7 @@ def _run_live_sit_cases(
                     case_areq,
                     run_result,
                     issuer_mode,
-                    preferred_challenge,
+                    effective_preferred_challenge,
                 )
             )
             continue
@@ -672,7 +676,7 @@ def _run_live_sit_cases(
                 "details": {
                     "expected": case.get("expected", {}),
                     "issuerMode": issuer_mode,
-                    "preferredChallenge": preferred_challenge,
+                    "preferredChallenge": effective_preferred_challenge,
                     "casePlan": case_plan,
                     "caseAreq": case_areq,
                     "ares": run_result.get("ares"),
@@ -1055,6 +1059,7 @@ def _visible_text_from_run_result(run_result: dict[str, Any]) -> list[str]:
     for path in (
         ("challenge",),
         ("smsSelection", "challenge"),
+        ("oobSubmission", "challenge"),
         ("otpSubmission", "challenge"),
         ("resendSubmission", "challenge"),
     ):
@@ -1270,18 +1275,30 @@ def _is_invalid_card_case(case: dict[str, Any]) -> bool:
     return "invalid_card" in tags
 
 
-def _case_plan_for_issuer_mode(case: dict[str, Any], issuer_mode_id: str) -> dict[str, Any] | None:
-    if issuer_mode_id in {"direct_otp", "sms_otp", "email_otp"}:
-        return build_direct_otp_case_plan(case)
-    if issuer_mode_id in {
-        "selection_sms_otp",
+def _case_plan_for_issuer_mode(
+    case: dict[str, Any],
+    issuer_mode: dict[str, Any],
+) -> dict[str, Any] | None:
+    if issuer_mode.get("id") in {
+        "sms_otp",
+        "email_otp",
+        "direct_oob",
         "selection_sms_oob",
         "selection_sms_email",
         "selection_sms_email_oob",
         "selection_email_oob",
+        "default_oob_can_switch_otp",
     }:
-        return build_selection_sms_otp_case_plan(case)
+        return build_case_plan(case, issuer_mode)
     return None
+
+
+def _preferred_challenge_for_case_plan(
+    case_plan: dict[str, Any] | None,
+    fallback: str,
+) -> str:
+    preferred = str((case_plan or {}).get("preferredChallenge") or "")
+    return preferred if preferred and preferred != "auto" else fallback
 
 
 def _notification_from_auto_creq(auto_creq: Any) -> Any:
@@ -1696,10 +1713,32 @@ def _authentication_mode_value(
     issuer_mode: dict[str, Any],
     preferred_challenge: str,
 ) -> str:
+    requested = preferred_challenge
+    if issuer_mode["id"] == "selection_sms_otp":
+        requested = "sms"
+    elif requested == "auto":
+        requested = str(issuer_mode.get("defaultPreferredChallenge") or "sms")
+
+    label_terms = {
+        "sms": ("sms", "text message", "mobile number"),
+        "email": ("email", "e-mail", "mail"),
+        "oob": ("oob", "mobile app", "application", "push", "app approval"),
+        "otp": ("sms", "otp", "passcode"),
+    }
+    terms = label_terms.get(requested, ())
+    for option in page.get("radioOptions") or []:
+        if option.get("name") != "challengeValue":
+            continue
+        label = str(option.get("label") or "").lower()
+        if any(term in label for term in terms):
+            return str(option.get("value") or "")
+
     if issuer_mode["id"] == "selection_sms_otp":
         preferred_values = ["1", "2", "3"]
     elif preferred_challenge in {"oob"} or issuer_mode["id"] == "direct_oob":
         preferred_values = ["3", "2", "1"]
+    elif preferred_challenge == "email":
+        preferred_values = ["2", "1", "3"]
     elif preferred_challenge in {"sms", "otp"}:
         preferred_values = ["1", "2", "3"]
     elif issuer_mode["id"] == "default_oob_can_switch_otp":
