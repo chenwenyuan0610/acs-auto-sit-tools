@@ -42,6 +42,22 @@ WORDING_HEADERS = (
     "完成狀態",
     "備註",
 )
+RAW_WORDING_HEADERS = (
+    "設備通道",
+    "訊息類別",
+    "編碼代號",
+    "語言代碼",
+    "驗證訊息標題",
+    "驗證訊息欄位文字",
+    "驗證訊息欄位標籤",
+    "第二組驗證碼標籤",
+    "下一步標籤",
+    "重送驗證標籤",
+    "繼續OOB作業標籤",
+    "是否需要幫助標籤",
+    "幫助文字",
+    "是否完成",
+)
 
 
 def _workbook_bytes(wording_rows=(), *, include_wording_sheet=True):
@@ -86,6 +102,46 @@ def _wording_row(locale, field_key, content, *, issuer_id=None):
     )
 
 
+def _raw_workbook_bytes(*, duplicate_sms=False, conflicting_sms=False, omit_email_column=None):
+    workbook = Workbook()
+    workbook.remove(workbook.active)
+    source_rows = {
+        "SMS": (
+            "BROWSER", "PA", "SEND_SMS_OTP", "zh_TW", "簡訊驗證", "請輸入驗證碼 {0}<br>完成交易",
+            "驗證碼", "確認驗證碼", "下一步", "重送驗證碼", "", "需要幫助？", "請聯絡客服", "Y",
+        ),
+        "Email": (
+            "BROWSER", "PA", "SEND_EMAIL_OTP", "en_US", "Email verification", "Enter the code sent by email",
+            "Verification code", "Confirm code", "Next", "Resend email", "", "Need help?", "Contact support", "Y",
+        ),
+        "OOB": (
+            "BROWSER", "NPA", "OOB_AUTHENTICATION", "zh_CN", "交易验证", "请在应用程序中确认交易",
+            "", "", "", "", "继续验证", "需要帮助？", "请联系客户服务", "N",
+        ),
+        "Single Select": (
+            "BROWSER", "PA", "SELECT_AUTHENTICATION_METHOD", "zh_TW", "選擇驗證方式", "請選擇驗證方式",
+            "驗證方式", "", "繼續", "", "", "需要幫助？", "請聯絡客服", "Y",
+        ),
+    }
+    for sheet_name, row in source_rows.items():
+        headers = list(RAW_WORDING_HEADERS)
+        if sheet_name == "Email" and omit_email_column:
+            headers.remove(omit_email_column)
+        sheet = workbook.create_sheet(sheet_name)
+        sheet.append(headers)
+        sheet.append(tuple(value for index, value in enumerate(row) if RAW_WORDING_HEADERS[index] in headers))
+        if sheet_name == "SMS" and duplicate_sms:
+            sheet.append(row)
+        if sheet_name == "SMS" and conflicting_sms:
+            changed = list(row)
+            changed[4] = "不同的簡訊驗證標題"
+            sheet.append(changed)
+
+    output = BytesIO()
+    workbook.save(output)
+    return output.getvalue()
+
+
 def test_import_normalizes_and_persists_workbook(tmp_path):
     destination = tmp_path / "wording_profiles.json"
     content = _workbook_bytes(
@@ -107,16 +163,22 @@ def test_import_normalizes_and_persists_workbook(tmp_path):
         "issuerMode": "direct_otp",
         "deviceChannel": "BROWSER",
         "messageCategory": "PA",
+        "sourceSheet": "SMS",
         "wordingCode": "SEND_SMS_OTP",
         "locale": "zh_TW",
         "fieldKey": "challenge_title",
         "content": "交易驗證",
         "placeholders": [],
+        "completionStatus": "Pass",
     }
+    assert imported["sourceFormat"] == "normalized"
+    assert imported["sourceSheets"] == ["SMS"]
     assert imported["summary"] == {
         "issuerCount": 1,
         "localeCount": 3,
         "wordingCount": 3,
+        "sourceSheetCount": 1,
+        "normalizedRowCount": 3,
     }
     assert load_wording_profiles(destination) == json.loads(destination.read_text(encoding="utf-8"))
 
@@ -142,6 +204,63 @@ def test_import_rejects_duplicate_wording_key_without_replacing_valid_file(tmp_p
         )
 
     assert json.loads(destination.read_text(encoding="utf-8")) == {"version": 0}
+
+
+def test_import_detects_and_normalizes_raw_challenge_ui_workbook(tmp_path):
+    destination = tmp_path / "wording_profiles.json"
+
+    imported = import_wording_workbook(
+        _raw_workbook_bytes(duplicate_sms=True),
+        destination,
+        source_file="challenge_ui_info.xlsx",
+    )
+
+    assert imported["sourceFormat"] == "challenge_ui_info"
+    assert imported["sourceSheets"] == ["SMS", "Email", "OOB", "Single Select"]
+    assert imported["defaultSupportedLocales"] == list(DEFAULT_SUPPORTED_LOCALES)
+    assert imported["issuers"]["default"]["supportedLocales"] == list(DEFAULT_SUPPORTED_LOCALES)
+    assert imported["summary"]["sourceSheetCount"] == 4
+    assert imported["summary"]["normalizedRowCount"] == 4
+    assert imported["summary"]["wordingCount"] == 27
+
+    wordings = imported["wordings"]
+    sms_message = next(
+        item
+        for item in wordings
+        if item["sourceSheet"] == "SMS"
+        and item["wordingCode"] == "SEND_SMS_OTP"
+        and item["fieldKey"] == "challenge_message"
+    )
+    assert sms_message["content"] == "請輸入驗證碼 {0}<br>完成交易"
+    assert sms_message["placeholders"] == ["{0}"]
+    assert sms_message["completionStatus"] == "Y"
+
+    oob_continue = next(
+        item for item in wordings if item["sourceSheet"] == "OOB" and item["fieldKey"] == "continue_oob_button"
+    )
+    assert oob_continue["content"] == "继续验证"
+    assert load_wording_profiles(destination) == imported
+
+
+def test_import_raw_workbook_rejects_missing_required_source_column_without_replacing_valid_file(tmp_path):
+    destination = tmp_path / "wording_profiles.json"
+    destination.write_text('{"version": 0}', encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"Sheet Email is missing column\(s\): 語言代碼"):
+        import_wording_workbook(
+            _raw_workbook_bytes(omit_email_column="語言代碼"),
+            destination,
+        )
+
+    assert json.loads(destination.read_text(encoding="utf-8")) == {"version": 0}
+
+
+def test_import_raw_workbook_rejects_conflicting_duplicate_runtime_key(tmp_path):
+    with pytest.raises(ValueError, match="Duplicate wording key"):
+        import_wording_workbook(
+            _raw_workbook_bytes(conflicting_sms=True),
+            tmp_path / "wording_profiles.json",
+        )
 
 
 def _normalized_profiles(*, omit_code=None):

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from hashlib import sha1
 from copy import deepcopy
 from datetime import datetime, timezone
 from io import BytesIO
@@ -94,6 +95,30 @@ WORDING_REQUIRED_COLUMNS = (
     "欄位代號",
     "話術內容",
 )
+RAW_SOURCE_SHEETS = ("SMS", "Email", "OOB", "Single Select")
+RAW_REQUIRED_COLUMNS = ("設備通道", "訊息類別", "編碼代號", "語言代碼")
+RAW_METADATA_COLUMNS = {*RAW_REQUIRED_COLUMNS, "是否完成"}
+RAW_FIELD_KEYS = {
+    "驗證訊息標題": "challenge_title",
+    "驗證訊息欄位文字": "challenge_message",
+    "驗證訊息欄位標籤": "challenge_label",
+    "第二組驗證碼標籤": "second_challenge_label",
+    "下一步標籤": "next_button",
+    "重送驗證標籤": "resend_button",
+    "繼續OOB作業標籤": "continue_oob_button",
+    "是否需要幫助標籤": "help_label",
+    "幫助文字": "help_text",
+}
+RAW_ISSUER_MODES = (
+    "sms_otp",
+    "email_otp",
+    "direct_oob",
+    "selection_sms_oob",
+    "selection_sms_email",
+    "selection_sms_email_oob",
+    "selection_email_oob",
+    "default_oob_can_switch_otp",
+)
 
 
 def import_wording_workbook(
@@ -107,14 +132,27 @@ def import_wording_workbook(
     except Exception as exc:
         raise ValueError(f"Invalid Excel workbook: {exc}") from exc
 
-    missing_sheets = [name for name in (ISSUER_SHEET, WORDING_SHEET) if name not in workbook.sheetnames]
-    if missing_sheets:
+    normalized_sheets = {ISSUER_SHEET, WORDING_SHEET}
+    available_normalized = normalized_sheets.intersection(workbook.sheetnames)
+    source_sheets = [name for name in RAW_SOURCE_SHEETS if name in workbook.sheetnames]
+    if normalized_sheets.issubset(workbook.sheetnames):
+        issuer_rows = _sheet_records(workbook[ISSUER_SHEET], ISSUER_REQUIRED_COLUMNS)
+        wording_rows = _sheet_records(workbook[WORDING_SHEET], WORDING_REQUIRED_COLUMNS)
+        issuers = _normalize_issuers(issuer_rows)
+        wordings = _normalize_wordings(wording_rows)
+        source_format = "normalized"
+        source_sheets = list(dict.fromkeys(wording["sourceSheet"] for wording in wordings))
+        normalized_row_count = len(wording_rows)
+    elif available_normalized:
+        missing_sheets = [name for name in (ISSUER_SHEET, WORDING_SHEET) if name not in workbook.sheetnames]
         raise ValueError(f"Missing required sheet(s): {', '.join(missing_sheets)}")
+    elif source_sheets:
+        issuers, wordings, normalized_row_count = _normalize_raw_workbook(workbook, source_sheets)
+        source_format = "challenge_ui_info"
+    else:
+        expected = ", ".join((ISSUER_SHEET, WORDING_SHEET, *RAW_SOURCE_SHEETS))
+        raise ValueError(f"Unsupported wording workbook format. Expected sheets include: {expected}")
 
-    issuer_rows = _sheet_records(workbook[ISSUER_SHEET], ISSUER_REQUIRED_COLUMNS)
-    wording_rows = _sheet_records(workbook[WORDING_SHEET], WORDING_REQUIRED_COLUMNS)
-    issuers = _normalize_issuers(issuer_rows)
-    wordings = _normalize_wordings(wording_rows)
     _add_wording_only_issuers(issuers, wordings)
     _apply_supported_locales(issuers, wordings)
 
@@ -122,6 +160,8 @@ def import_wording_workbook(
     normalized = {
         "version": 1,
         "sourceFile": str(source_file or ""),
+        "sourceFormat": source_format,
+        "sourceSheets": source_sheets,
         "importedAt": datetime.now(timezone.utc).isoformat(),
         "defaultSupportedLocales": list(DEFAULT_SUPPORTED_LOCALES),
         "issuers": issuers,
@@ -130,6 +170,8 @@ def import_wording_workbook(
             "issuerCount": len(issuers),
             "localeCount": len(all_locales),
             "wordingCount": len(wordings),
+            "sourceSheetCount": len(source_sheets),
+            "normalizedRowCount": normalized_row_count,
         },
     }
     _write_json_atomically(destination, normalized)
@@ -289,11 +331,13 @@ def _normalize_wordings(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "issuerMode": _required_text(row, "Issuer Mode"),
             "deviceChannel": _required_text(row, "設備通道").upper(),
             "messageCategory": _required_text(row, "訊息類別").upper(),
+            "sourceSheet": _required_text(row, "來源頁籤"),
             "wordingCode": _required_text(row, "編碼代號").upper(),
             "locale": _required_text(row, "語言代碼"),
             "fieldKey": _required_text(row, "欄位代號"),
             "content": _required_text(row, "話術內容"),
             "placeholders": list(dict.fromkeys(re.findall(r"\{\d+\}", _text(row.get("話術內容"))))),
+            "completionStatus": _text(row.get("完成狀態")),
         }
         option_index = _text(row.get("選項序號"))
         if option_index:
@@ -305,6 +349,7 @@ def _normalize_wordings(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "issuerMode",
                 "deviceChannel",
                 "messageCategory",
+                "sourceSheet",
                 "wordingCode",
                 "locale",
                 "fieldKey",
@@ -317,6 +362,69 @@ def _normalize_wordings(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         values_by_key[key] = normalized["content"]
         wordings.append(normalized)
     return wordings
+
+
+def _normalize_raw_workbook(
+    workbook: Any,
+    source_sheets: list[str],
+) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]], int]:
+    wordings: list[dict[str, Any]] = []
+    values_by_key: dict[tuple[str, ...], str] = {}
+    row_keys: set[tuple[str, ...]] = set()
+    for source_sheet in source_sheets:
+        rows = _sheet_records(workbook[source_sheet], RAW_REQUIRED_COLUMNS)
+        for row in rows:
+            device_channel = _required_text(row, "設備通道").upper()
+            if device_channel in {"B", "BRW", "BROWSER"}:
+                device_channel = "BROWSER"
+            message_category = _required_text(row, "訊息類別").upper()
+            wording_code = _required_text(row, "編碼代號").upper()
+            locale = _required_text(row, "語言代碼")
+            row_key = (source_sheet, device_channel, message_category, wording_code, locale)
+            row_keys.add(row_key)
+            for source_column, value in row.items():
+                content = _text(value)
+                if not content or source_column in RAW_METADATA_COLUMNS:
+                    continue
+                field_key = RAW_FIELD_KEYS.get(source_column) or _raw_field_key(source_column)
+                normalized = {
+                    "issuerId": "default",
+                    "issuerMode": "",
+                    "deviceChannel": device_channel,
+                    "messageCategory": message_category,
+                    "sourceSheet": source_sheet,
+                    "wordingCode": wording_code,
+                    "locale": locale,
+                    "fieldKey": field_key,
+                    "sourceColumn": source_column,
+                    "content": content,
+                    "placeholders": list(dict.fromkeys(re.findall(r"\{\d+\}", content))),
+                    "completionStatus": _text(row.get("是否完成")),
+                }
+                key = (*row_key, field_key)
+                previous = values_by_key.get(key)
+                if previous == content:
+                    continue
+                if previous is not None:
+                    raise ValueError(f"Duplicate wording key: {' / '.join(key)}")
+                values_by_key[key] = content
+                wordings.append(normalized)
+
+    issuers = {
+        "default": {
+            "id": "default",
+            "name": "預設發卡行",
+            "defaultLocale": DEFAULT_SUPPORTED_LOCALES[0],
+            "issuerModes": list(RAW_ISSUER_MODES),
+            "supportedLocales": [],
+        }
+    }
+    return issuers, wordings, len(row_keys)
+
+
+def _raw_field_key(header: str) -> str:
+    digest = sha1(header.encode("utf-8")).hexdigest()[:10]
+    return f"raw_{digest}"
 
 
 def _add_wording_only_issuers(
