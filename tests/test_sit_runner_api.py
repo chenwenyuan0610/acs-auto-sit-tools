@@ -5,7 +5,7 @@ from urllib import request
 
 import acs_auto_sit.server as server_module
 from acs_auto_sit.client import PostResult
-from acs_auto_sit.issuer_modes import resolve_issuer_mode
+from acs_auto_sit.issuer_modes import issuer_mode_catalog, resolve_issuer_mode
 from acs_auto_sit.server import create_server
 
 
@@ -59,13 +59,26 @@ def test_issuer_modes_api_returns_manual_mode_choices():
 
     assert result["ok"] is True
     assert [item["id"] for item in result["issuerModes"]] == [
-        "selection_sms_oob",
-        "selection_sms_otp",
-        "direct_otp",
+        "sms_otp",
+        "email_otp",
         "direct_oob",
+        "selection_sms_oob",
+        "selection_sms_email",
+        "selection_sms_email_oob",
+        "selection_email_oob",
         "default_oob_can_switch_otp",
     ]
-    assert result["defaultIssuerMode"] == "direct_otp"
+    assert result["defaultIssuerMode"] == "sms_otp"
+    assert [item["id"] for item in result["preferredChallenges"]] == ["auto", "sms", "email", "oob", "otp"]
+
+
+def test_issuer_mode_alias_and_destination_metadata():
+    catalog = issuer_mode_catalog()
+
+    assert catalog["defaultIssuerMode"] == "sms_otp"
+    assert resolve_issuer_mode("direct_otp")["id"] == "sms_otp"
+    assert resolve_issuer_mode("email_otp")["destinations"] == ["email"]
+    assert resolve_issuer_mode("selection_sms_email_oob")["destinations"] == ["sms", "email", "oob"]
 
 
 def test_sit_run_api_dry_run_marks_selected_cases_without_network():

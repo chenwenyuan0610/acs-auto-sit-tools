@@ -32,7 +32,7 @@ def test_load_case_progress_records_reads_case_modes_and_ignores_unknown_modes(t
 
     assert records == {
         "case01": {
-            "completedModes": ["direct_otp"],
+            "completedModes": ["sms_otp"],
             "note": "direct flow complete",
         }
     }
@@ -56,9 +56,9 @@ def test_build_browser_case_progress_defaults_missing_cases_to_pending():
         {"case01": {"completedModes": ["direct_otp"]}},
     )
 
-    assert progress["cases"][0]["completedModes"] == ["direct_otp"]
+    assert progress["cases"][0]["completedModes"] == ["sms_otp"]
     assert progress["cases"][1]["status"] == "pending"
-    assert progress["summary"]["directOtpCompleted"] == 1
+    assert progress["summary"]["smsOtpCompleted"] == 1
 
 
 def test_browser_case_catalog_uses_progress_file(tmp_path):
@@ -95,8 +95,12 @@ def test_browser_case_progress_marks_completed_otp_modes_done_for_all_cases():
     assert progress["summary"]["directOtpCompleted"] == 43
     assert progress["summary"]["selectionSmsOtpCompleted"] == 43
     assert progress["summary"]["pendingIssuerModes"] == [
-        "selection_sms_oob",
+        "email_otp",
         "direct_oob",
+        "selection_sms_oob",
+        "selection_sms_email",
+        "selection_sms_email_oob",
+        "selection_email_oob",
         "default_oob_can_switch_otp",
     ]
     assert all(item["directOtp"]["status"] == "completed" for item in progress["cases"])
@@ -126,5 +130,5 @@ def test_browser_case_progress_exposes_pending_modes_per_case():
     first_case = progress["cases"][0]
     assert first_case["caseId"] == "case01"
     assert first_case["status"] == "partial"
-    assert first_case["completedModes"] == ["direct_otp", "selection_sms_otp"]
+    assert first_case["completedModes"] == ["sms_otp", "selection_sms_otp"]
     assert "selection_sms_oob" in first_case["pendingModes"]

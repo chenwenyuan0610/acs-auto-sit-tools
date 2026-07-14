@@ -1271,9 +1271,15 @@ def _is_invalid_card_case(case: dict[str, Any]) -> bool:
 
 
 def _case_plan_for_issuer_mode(case: dict[str, Any], issuer_mode_id: str) -> dict[str, Any] | None:
-    if issuer_mode_id == "direct_otp":
+    if issuer_mode_id in {"direct_otp", "sms_otp", "email_otp"}:
         return build_direct_otp_case_plan(case)
-    if issuer_mode_id == "selection_sms_otp":
+    if issuer_mode_id in {
+        "selection_sms_otp",
+        "selection_sms_oob",
+        "selection_sms_email",
+        "selection_sms_email_oob",
+        "selection_email_oob",
+    }:
         return build_selection_sms_otp_case_plan(case)
     return None
 

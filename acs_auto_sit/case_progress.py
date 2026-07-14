@@ -5,18 +5,19 @@ from pathlib import Path
 from typing import Any
 
 TRACKED_ISSUER_MODES = [
-    "selection_sms_oob",
-    "selection_sms_otp",
-    "direct_otp",
+    "sms_otp",
+    "email_otp",
     "direct_oob",
+    "selection_sms_oob",
+    "selection_sms_email",
+    "selection_sms_email_oob",
+    "selection_email_oob",
     "default_oob_can_switch_otp",
 ]
+LEGACY_ISSUER_MODES = ["selection_sms_otp"]
+PROGRESS_MODE_ALIASES = {"direct_otp": "sms_otp"}
 
-PENDING_ISSUER_MODES = [
-    "selection_sms_oob",
-    "direct_oob",
-    "default_oob_can_switch_otp",
-]
+PENDING_ISSUER_MODES = [mode for mode in TRACKED_ISSUER_MODES if mode != "sms_otp"]
 
 DEFAULT_CASE_PROGRESS_PATH = (
     Path(__file__).resolve().parent.parent / "data" / "browser_case_progress.json"
@@ -41,11 +42,7 @@ def load_case_progress_records(
     for case_id, record in payload["cases"].items():
         if not isinstance(case_id, str) or not isinstance(record, dict):
             continue
-        completed_modes = [
-            mode
-            for mode in record.get("completedModes") or []
-            if mode in TRACKED_ISSUER_MODES
-        ]
+        completed_modes = _canonical_completed_modes(record.get("completedModes") or [])
         records[case_id] = {
             "completedModes": completed_modes,
             "note": str(record.get("note") or ""),
@@ -62,10 +59,10 @@ def build_browser_case_progress(
         _case_progress(case, progress_records.get(str(case.get("id") or ""), {}))
         for case in cases
     ]
-    direct_otp_completed = sum(
+    sms_otp_completed = sum(
         1
         for item in case_progress
-        if item["directOtp"]["status"] == "completed"
+        if item["smsOtp"]["status"] == "completed"
     )
     selection_sms_otp_completed = sum(
         1
@@ -75,7 +72,8 @@ def build_browser_case_progress(
     return {
         "summary": {
             "total": len(case_progress),
-            "directOtpCompleted": direct_otp_completed,
+            "smsOtpCompleted": sms_otp_completed,
+            "directOtpCompleted": sms_otp_completed,
             "selectionSmsOtpCompleted": selection_sms_otp_completed,
             "allModesCompleted": 0,
             "pendingIssuerModes": list(PENDING_ISSUER_MODES),
@@ -96,11 +94,7 @@ def _case_progress(
     case: dict[str, Any],
     record: dict[str, Any],
 ) -> dict[str, Any]:
-    completed_modes = [
-        mode
-        for mode in record.get("completedModes") or []
-        if mode in TRACKED_ISSUER_MODES
-    ]
+    completed_modes = _canonical_completed_modes(record.get("completedModes") or [])
     pending_modes = [mode for mode in TRACKED_ISSUER_MODES if mode not in completed_modes]
     status = "completed" if not pending_modes else "partial" if completed_modes else "pending"
 
@@ -111,7 +105,12 @@ def _case_progress(
         "pendingModes": pending_modes,
         "note": str(record.get("note") or ""),
         "directOtp": {
-            "status": "completed" if "direct_otp" in completed_modes else "pending",
+            "status": "completed" if "sms_otp" in completed_modes else "pending",
+            "actionCount": 0,
+            "actions": [],
+        },
+        "smsOtp": {
+            "status": "completed" if "sms_otp" in completed_modes else "pending",
             "actionCount": 0,
             "actions": [],
         },
@@ -121,3 +120,13 @@ def _case_progress(
             "actions": [],
         },
     }
+
+
+def _canonical_completed_modes(modes: list[Any]) -> list[str]:
+    completed: list[str] = []
+    allowed = set(TRACKED_ISSUER_MODES + LEGACY_ISSUER_MODES)
+    for value in modes:
+        mode = PROGRESS_MODE_ALIASES.get(str(value), str(value))
+        if mode in allowed and mode not in completed:
+            completed.append(mode)
+    return completed
