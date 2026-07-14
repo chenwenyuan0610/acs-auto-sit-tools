@@ -388,10 +388,13 @@ function statusForCase(caseItem) {
 
 function issuerModeLabel(mode) {
   const labels = {
-    selection_sms_oob: "有驗證選擇：SMS / OOB",
-    selection_sms_otp: "有驗證選擇：選 SMS 進 OTP",
-    direct_otp: "直接進 OTP",
+    sms_otp: "SMS OTP",
+    email_otp: "Email OTP",
     direct_oob: "直接進 OOB",
+    selection_sms_oob: "有驗證選擇：SMS / OOB",
+    selection_sms_email: "有驗證選擇：SMS / Email",
+    selection_sms_email_oob: "有驗證選擇：SMS / Email / OOB",
+    selection_email_oob: "有驗證選擇：Email / OOB",
     default_oob_can_switch_otp: "預設 OOB，可切到 OTP",
   };
   return labels[mode.id] || mode.label || mode.id;
@@ -401,6 +404,7 @@ function preferredChallengeLabel(challenge) {
   const labels = {
     auto: "自動",
     sms: "SMS",
+    email: "Email",
     oob: "OOB",
     otp: "OTP",
   };
@@ -509,7 +513,7 @@ async function loadSitCases() {
   try {
     const params = new URLSearchParams({
       issuerId: issuerProfileInput?.value || "default",
-      issuerMode: issuerModeInput?.value || "direct_otp",
+      issuerMode: issuerModeInput?.value || "sms_otp",
     });
     const result = await getApi(`/api/sit/browser-cases?${params}`);
     sitCases = result.cases || [];
@@ -529,7 +533,11 @@ async function loadWordingProfiles(preferredIssuerId = issuerProfileInput?.value
     return;
   }
   try {
-    const result = await getApi("/api/sit/wording-profiles");
+    const params = new URLSearchParams({
+      issuerId: preferredIssuerId,
+      issuerMode: issuerModeInput?.value || "sms_otp",
+    });
+    const result = await getApi(`/api/sit/wording-profiles?${params}`);
     const issuers = result.issuers || [];
     issuerProfileInput.replaceChildren();
     if (issuers.length === 0) {
@@ -549,8 +557,10 @@ async function loadWordingProfiles(preferredIssuerId = issuerProfileInput?.value
       (option) => option.value === preferredIssuerId
     ) ? preferredIssuerId : issuerProfileInput.options[0]?.value || "default";
     const summary = result.summary || {};
+    const sourceSheets = result.sourceSheets || [];
+    const locales = result.defaultSupportedLocales || [];
     wordingImportStatusEl.textContent = result.imported
-      ? `${result.sourceFile || "話術設定"}：${summary.issuerCount || 0} 個發卡行、${summary.localeCount || 0} 種語言、${summary.wordingCount || 0} 筆話術`
+      ? `${result.sourceFile || "話術設定"}：格式 ${result.sourceFormat || "unknown"}；頁籤 ${sourceSheets.join(", ") || "-"}；語言 ${locales.join(", ") || "-"}；${summary.normalizedRowCount ?? summary.wordingCount ?? 0} 筆正規化資料；${result.generatedCaseCount || 0} 個案例`
       : "尚未匯入話術設定；目前使用原始案例內容";
     wordingImportStatusEl.classList.remove("error");
   } catch (error) {
@@ -573,6 +583,8 @@ async function importWordingWorkbook() {
     const result = await postApi("/api/sit/wording-profiles/import", {
       fileName: file.name,
       contentBase64: arrayBufferToBase64(await file.arrayBuffer()),
+      issuerId: issuerProfileInput?.value || "default",
+      issuerMode: issuerModeInput?.value || "sms_otp",
     });
     const preferredIssuerId = result.issuers?.[0]?.id || "default";
     await loadWordingProfiles(preferredIssuerId);
@@ -599,7 +611,7 @@ async function loadIssuerModes() {
       option.textContent = issuerModeLabel(mode);
       issuerModeInput.appendChild(option);
     }
-    issuerModeInput.value = result.defaultIssuerMode || "direct_otp";
+    issuerModeInput.value = result.defaultIssuerMode || "sms_otp";
 
     preferredChallengeInput.innerHTML = "";
     for (const challenge of result.preferredChallenges || []) {
@@ -635,7 +647,7 @@ async function runSitCases(caseIds) {
       caseIds,
       mode: "live",
       issuerId: issuerProfileInput?.value || "default",
-      issuerMode: issuerModeInput?.value || "direct_otp",
+      issuerMode: issuerModeInput?.value || "sms_otp",
       preferredChallenge: preferredChallengeInput?.value || "auto",
       transaction: readCommonEnvelope(
         sitAreqUrlInput?.value || areqUrlInput.value,
@@ -686,7 +698,12 @@ runAllCasesButton?.addEventListener("click", () => runSitCases(
 ));
 
 issuerProfileInput?.addEventListener("change", loadSitCases);
-issuerModeInput?.addEventListener("change", loadSitCases);
+async function reloadCasesForIssuerMode() {
+  await loadSitCases();
+  await loadWordingProfiles();
+}
+
+issuerModeInput?.addEventListener("change", reloadCasesForIssuerMode);
 importWordingWorkbookButton?.addEventListener("click", importWordingWorkbook);
 
 sendAreqButton.addEventListener("click", async () => {

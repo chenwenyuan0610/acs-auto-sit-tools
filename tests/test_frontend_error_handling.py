@@ -27,7 +27,20 @@ def test_frontend_has_sit_runner_tab_and_controls():
     assert 'id="runSelectedCases"' in index_html
     assert 'id="runAllCases"' in index_html
     assert 'id="issuerMode"' in index_html
-    assert "selection_sms_otp" in index_html
+    for mode_id in (
+        "sms_otp",
+        "email_otp",
+        "direct_oob",
+        "selection_sms_oob",
+        "selection_sms_email",
+        "selection_sms_email_oob",
+        "selection_email_oob",
+        "default_oob_can_switch_otp",
+    ):
+        assert mode_id in index_html
+        assert mode_id in app_js
+    assert 'value="direct_otp"' not in index_html
+    assert "selection_sms_otp" not in index_html
     assert 'id="preferredChallenge"' in index_html
     assert 'id="otpSourceMode"' in index_html
     assert 'id="otpLookupUrl"' in index_html
@@ -44,7 +57,7 @@ def test_frontend_has_sit_runner_tab_and_controls():
     assert "/api/sit/run" in app_js
     assert 'mode: "live"' in app_js
     assert "issuerMode:" in app_js
-    assert "selection_sms_otp" in app_js
+    assert '|| "sms_otp"' in app_js
     assert "preferredChallenge:" in app_js
     assert "otpSourceMode:" in app_js
     assert "otpLookupUrl:" in app_js
@@ -70,11 +83,16 @@ def test_frontend_imports_wording_profiles_and_disables_unavailable_cases():
     assert "/api/sit/wording-profiles/import" in app_js
     assert "/api/sit/wording-profiles" in app_js
     assert "contentBase64" in app_js
+    assert "sourceFormat" in app_js
+    assert "sourceSheets" in app_js
+    assert "generatedCaseCount" in app_js
+    assert "defaultSupportedLocales" in app_js
     assert "issuerId:" in app_js
     assert "availability?.enabled === false" in app_js
     assert ":not(:disabled)" in app_js
     assert ".wording-import-controls" in styles
     assert ".case-unavailable-reason" in styles
+    assert 'issuerModeInput?.addEventListener("change", reloadCasesForIssuerMode)' in app_js
 
 
 def test_sit_controls_use_execution_and_settings_sidebar():

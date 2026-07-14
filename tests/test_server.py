@@ -470,6 +470,7 @@ def test_wording_profile_import_and_issuer_case_catalog_api(tmp_path):
         {
             "fileName": workbook_path.name,
             "contentBase64": base64.b64encode(workbook_path.read_bytes()).decode("ascii"),
+            "issuerMode": "direct_otp",
         }
     ).encode("utf-8")
 
@@ -487,7 +488,7 @@ def test_wording_profile_import_and_issuer_case_catalog_api(tmp_path):
         with request.urlopen(import_request, timeout=15) as response:
             imported = json.loads(response.read().decode("utf-8"))
         with request.urlopen(
-            f"http://127.0.0.1:{app_server.server_port}/api/sit/wording-profiles",
+            f"http://127.0.0.1:{app_server.server_port}/api/sit/wording-profiles?issuerMode=direct_otp",
             timeout=5,
         ) as response:
             profiles = json.loads(response.read().decode("utf-8"))
@@ -503,8 +504,16 @@ def test_wording_profile_import_and_issuer_case_catalog_api(tmp_path):
 
     assert destination.is_file()
     assert imported["ok"] is True
+    assert imported["sourceFormat"] == "normalized"
+    assert imported["sourceSheets"] == ["SMS", "Email", "OOB", "Single Select", "Single Select Info", "3RI"]
+    assert imported["generatedCaseCount"] == 21
     assert imported["summary"]["issuerCount"] == 1
+    assert imported["summary"]["generatedCaseCount"] == 21
     assert profiles["imported"] is True
+    assert profiles["sourceFormat"] == "normalized"
+    assert profiles["sourceSheets"] == imported["sourceSheets"]
+    assert profiles["selectedIssuerMode"] == "direct_otp"
+    assert profiles["generatedCaseCount"] == 21
     assert profiles["defaultSupportedLocales"] == ["zh_TW", "en_US", "zh_CN"]
     assert profiles["issuers"][0]["id"] == "default"
     assert catalog["wordingProfile"]["enabled"] is True

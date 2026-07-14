@@ -242,10 +242,13 @@
           <label>
             發卡行模式
             <select id="issuerMode">
-              <option value="selection_sms_oob">有驗證選擇：SMS / OOB</option>
-              <option value="selection_sms_otp">有驗證選擇：選 SMS 進 OTP</option>
-              <option value="direct_otp">直接進 OTP</option>
+              <option value="sms_otp">SMS OTP</option>
+              <option value="email_otp">Email OTP</option>
               <option value="direct_oob">直接進 OOB</option>
+              <option value="selection_sms_oob">有驗證選擇：SMS / OOB</option>
+              <option value="selection_sms_email">有驗證選擇：SMS / Email</option>
+              <option value="selection_sms_email_oob">有驗證選擇：SMS / Email / OOB</option>
+              <option value="selection_email_oob">有驗證選擇：Email / OOB</option>
               <option value="default_oob_can_switch_otp">預設 OOB，可切到 OTP</option>
             </select>
           </label>
@@ -254,6 +257,7 @@
             <select id="preferredChallenge">
               <option value="auto">自動</option>
               <option value="sms">SMS</option>
+              <option value="email">Email</option>
               <option value="oob">OOB</option>
               <option value="otp">OTP</option>
             </select>

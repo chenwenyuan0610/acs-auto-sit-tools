@@ -67,7 +67,7 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
             self._handle_issuer_modes()
             return
         if path == "/api/sit/wording-profiles":
-            self._handle_wording_profiles()
+            self._handle_wording_profiles(query)
             return
         if path.startswith("/static/"):
             self._serve_static(unquote(path.removeprefix("/static/")))
@@ -156,7 +156,7 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
 
     def _handle_browser_cases(self, query: dict[str, list[str]]) -> None:
         issuer_id = str((query.get("issuerId") or ["default"])[0] or "default")
-        issuer_mode = str((query.get("issuerMode") or ["direct_otp"])[0] or "direct_otp")
+        issuer_mode = str((query.get("issuerMode") or ["sms_otp"])[0] or "sms_otp")
         catalog = load_browser_case_catalog(
             wording_profiles_path=self._wording_profiles_path(),
             issuer_id=issuer_id,
@@ -167,29 +167,52 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
     def _handle_issuer_modes(self) -> None:
         self._json_response({"ok": True, **issuer_mode_catalog()})
 
-    def _handle_wording_profiles(self) -> None:
+    def _handle_wording_profiles(self, query: dict[str, list[str]]) -> None:
         path = self._wording_profiles_path()
         profiles = load_wording_profiles(path) if path else None
+        issuer_id = str((query.get("issuerId") or ["default"])[0] or "default")
+        requested_mode = str((query.get("issuerMode") or ["sms_otp"])[0] or "sms_otp")
         if not profiles:
             self._json_response(
                 {
                     "ok": True,
                     "imported": False,
+                    "sourceFormat": "",
+                    "sourceSheets": [],
+                    "selectedIssuerMode": requested_mode,
+                    "generatedCaseCount": 0,
                     "defaultSupportedLocales": list(DEFAULT_SUPPORTED_LOCALES),
                     "issuers": [],
-                    "summary": {"issuerCount": 0, "localeCount": 0, "wordingCount": 0},
+                    "summary": {
+                        "issuerCount": 0,
+                        "localeCount": 0,
+                        "wordingCount": 0,
+                        "generatedCaseCount": 0,
+                    },
                 }
             )
             return
+        selected_mode = _profile_issuer_mode(profiles, requested_mode)
+        catalog = load_browser_case_catalog(
+            wording_profiles_path=path,
+            issuer_id=issuer_id,
+            issuer_mode=selected_mode,
+        )
+        generated_count = _generated_wording_case_count(catalog)
+        summary = {**(profiles.get("summary") or {}), "generatedCaseCount": generated_count}
         self._json_response(
             {
                 "ok": True,
                 "imported": True,
                 "sourceFile": profiles.get("sourceFile", ""),
+                "sourceFormat": profiles.get("sourceFormat", ""),
+                "sourceSheets": profiles.get("sourceSheets") or [],
                 "importedAt": profiles.get("importedAt", ""),
+                "selectedIssuerMode": selected_mode,
+                "generatedCaseCount": generated_count,
                 "defaultSupportedLocales": profiles.get("defaultSupportedLocales") or list(DEFAULT_SUPPORTED_LOCALES),
                 "issuers": list((profiles.get("issuers") or {}).values()),
-                "summary": profiles.get("summary") or {},
+                "summary": summary,
             }
         )
 
@@ -213,14 +236,28 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
             destination,
             source_file=file_name,
         )
+        requested_mode = str(envelope.get("issuerMode") or "sms_otp")
+        issuer_id = str(envelope.get("issuerId") or "default")
+        selected_mode = _profile_issuer_mode(imported, requested_mode)
+        catalog = load_browser_case_catalog(
+            wording_profiles_path=destination,
+            issuer_id=issuer_id,
+            issuer_mode=selected_mode,
+        )
+        generated_count = _generated_wording_case_count(catalog)
+        summary = {**(imported.get("summary") or {}), "generatedCaseCount": generated_count}
         self._json_response(
             {
                 "ok": True,
                 "sourceFile": imported.get("sourceFile", ""),
+                "sourceFormat": imported.get("sourceFormat", ""),
+                "sourceSheets": imported.get("sourceSheets") or [],
                 "importedAt": imported.get("importedAt", ""),
+                "selectedIssuerMode": selected_mode,
+                "generatedCaseCount": generated_count,
                 "defaultSupportedLocales": imported.get("defaultSupportedLocales") or [],
                 "issuers": list((imported.get("issuers") or {}).values()),
-                "summary": imported.get("summary") or {},
+                "summary": summary,
             }
         )
 
@@ -1324,6 +1361,24 @@ def _summarize_sit_results(results: list[dict[str, Any]]) -> dict[str, int]:
         if status in summary:
             summary[status] += 1
     return summary
+
+
+def _profile_issuer_mode(profiles: dict[str, Any], requested_mode: str) -> str:
+    requested = requested_mode or "sms_otp"
+    canonical = resolve_issuer_mode(requested)["id"]
+    if profiles.get("sourceFormat") != "challenge_ui_info" and canonical == "sms_otp":
+        configured_modes = {
+            str(mode)
+            for issuer in (profiles.get("issuers") or {}).values()
+            for mode in issuer.get("issuerModes") or []
+        }
+        if "direct_otp" in configured_modes:
+            return "direct_otp"
+    return canonical
+
+
+def _generated_wording_case_count(catalog: dict[str, Any]) -> int:
+    return sum(1 for case in catalog.get("cases") or [] if case.get("wording"))
 
 
 def _expected_actual_reason(label: str, expected: Any, actual: Any) -> str:
