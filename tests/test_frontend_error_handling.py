@@ -57,6 +57,26 @@ def test_frontend_has_sit_runner_tab_and_controls():
     assert "renderSitRunSummary" in app_js
 
 
+def test_frontend_imports_wording_profiles_and_disables_unavailable_cases():
+    index_html = Path("static/index.html").read_text(encoding="utf-8")
+    app_js = Path("static/app.js").read_text(encoding="utf-8")
+    styles = Path("static/styles.css").read_text(encoding="utf-8")
+
+    assert 'id="issuerProfile"' in index_html
+    assert 'id="wordingWorkbook"' in index_html
+    assert 'accept=".xlsx"' in index_html
+    assert 'id="importWordingWorkbook"' in index_html
+    assert 'id="wordingImportStatus"' in index_html
+    assert "/api/sit/wording-profiles/import" in app_js
+    assert "/api/sit/wording-profiles" in app_js
+    assert "contentBase64" in app_js
+    assert "issuerId:" in app_js
+    assert "availability?.enabled === false" in app_js
+    assert ":not(:disabled)" in app_js
+    assert ".wording-import-controls" in styles
+    assert ".case-unavailable-reason" in styles
+
+
 def test_sit_controls_use_execution_and_settings_sidebar():
     index_html = Path("static/index.html").read_text(encoding="utf-8")
     app_js = Path("static/app.js").read_text(encoding="utf-8")

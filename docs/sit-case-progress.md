@@ -38,16 +38,36 @@ The remaining active manual or slow cases are still skipped in live mode until t
 
 ## UI Wording Validation
 
-Cases from `case23` onward are UI wording and page-format validation cases. Because wording can differ by issuer, the expected validation should be driven by issuer-specific wording profiles instead of a single global expected string.
+Cases from `case23` onward are UI wording and page-format validation cases. Issuer-specific wording import is now implemented. The default supported locales are `zh_TW`, `en_US`, and `zh_CN`.
 
-The generated workbook `outputs/challenge-ui-wording-work/acs_challenge_ui_wording_import.xlsx` is the current staging format for future wording import. It contains:
+The workbook `outputs/challenge-ui-wording-work/acs_challenge_ui_wording_import.xlsx` is the supported import format. It contains:
 
 - Issuer settings and issuer mode defaults.
 - Normalized wording rows keyed by issuer, issuer mode, device channel, message category, code, language, and field key.
 - UI case mapping for `case23` onward.
 - Field dictionary and source sheet summary.
 
-When an issuer profile exists, the runner should compare the returned challenge UI against the issuer's normalized wording rows. When no issuer profile exists, the case should be reported as needing a wording profile rather than failing against another issuer's copy.
+The settings panel can import this workbook and stores the normalized runtime profile in `data/wording_profiles.json`. That generated file is local runtime data and is excluded from Git.
+
+After import, the previous 28 language-specific cases (`case23` to `case50`) are represented by seven scenario templates and expanded for each supported issuer locale:
+
+- Initial PA OTP page.
+- Initial NPA OTP page.
+- Incorrect OTP.
+- Successful OTP resend.
+- OTP resend gap limit.
+- OTP resend count limit.
+- Expired OTP.
+
+The default profile therefore exposes 21 localized UI cases. Issuer-specific rows override shared default wording. A missing code/locale combination remains visible but cannot be selected or executed, and its reason is shown in the case list. Excel placeholders such as `{0}` and HTML line breaks are matched against dynamic challenge values instead of being compared literally.
+
+Available APIs:
+
+- `GET /api/sit/wording-profiles`
+- `POST /api/sit/wording-profiles/import`
+- `GET /api/sit/browser-cases?issuerId=default&issuerMode=direct_otp`
+
+Verification on 2026-07-14: the full automated suite passed with 106 tests. The bundled workbook imported as one issuer, three locales, and 1761 normalized wording rows.
 
 ## OOB Planning
 

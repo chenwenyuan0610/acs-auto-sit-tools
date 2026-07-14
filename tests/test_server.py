@@ -1,6 +1,7 @@
 import json
 import socket
 import base64
+from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 from urllib.parse import parse_qs
@@ -422,6 +423,55 @@ def test_areq_api_marks_transport_error_as_not_ok():
     assert result["ok"] is False
     assert result["error"]
     assert result["ares"] is None
+
+
+def test_wording_profile_import_and_issuer_case_catalog_api(tmp_path):
+    destination = tmp_path / "wording_profiles.json"
+    workbook_path = Path("outputs/challenge-ui-wording-work/acs_challenge_ui_wording_import.xlsx")
+    body = json.dumps(
+        {
+            "fileName": workbook_path.name,
+            "contentBase64": base64.b64encode(workbook_path.read_bytes()).decode("ascii"),
+        }
+    ).encode("utf-8")
+
+    app_server = create_server("127.0.0.1", 0, wording_profiles_path=destination)
+    app_thread = Thread(target=app_server.serve_forever, daemon=True)
+    app_thread.start()
+    import_request = request.Request(
+        f"http://127.0.0.1:{app_server.server_port}/api/sit/wording-profiles/import",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with request.urlopen(import_request, timeout=15) as response:
+            imported = json.loads(response.read().decode("utf-8"))
+        with request.urlopen(
+            f"http://127.0.0.1:{app_server.server_port}/api/sit/wording-profiles",
+            timeout=5,
+        ) as response:
+            profiles = json.loads(response.read().decode("utf-8"))
+        with request.urlopen(
+            f"http://127.0.0.1:{app_server.server_port}/api/sit/browser-cases?issuerId=default&issuerMode=direct_otp",
+            timeout=5,
+        ) as response:
+            catalog = json.loads(response.read().decode("utf-8"))
+    finally:
+        app_server.shutdown()
+        app_thread.join(timeout=5)
+        app_server.server_close()
+
+    assert destination.is_file()
+    assert imported["ok"] is True
+    assert imported["summary"]["issuerCount"] == 1
+    assert profiles["imported"] is True
+    assert profiles["defaultSupportedLocales"] == ["zh_TW", "en_US", "zh_CN"]
+    assert profiles["issuers"][0]["id"] == "default"
+    assert catalog["wordingProfile"]["enabled"] is True
+    assert catalog["wordingProfile"]["supportedLocales"] == ["zh_TW", "en_US", "zh_CN"]
+    assert "case23_zh_TW" in {case["id"] for case in catalog["cases"]}
 
 
 def _find_closed_port():

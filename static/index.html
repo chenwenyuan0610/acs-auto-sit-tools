@@ -205,6 +205,20 @@
             </section>
             <section id="caseSettingsPanel" class="case-control-view" role="tabpanel" hidden>
         <div class="sit-options">
+          <div class="wording-import-controls">
+            <label>
+              發卡行話術設定
+              <select id="issuerProfile">
+                <option value="default">預設發卡行</option>
+              </select>
+            </label>
+            <label>
+              話術 Excel
+              <input id="wordingWorkbook" type="file" accept=".xlsx" />
+            </label>
+            <button id="importWordingWorkbook" type="button">匯入話術</button>
+            <p id="wordingImportStatus" class="wording-import-status" role="status">尚未匯入話術設定</p>
+          </div>
           <label>
             SIT AReq URL
             <input id="sitAreqUrl" spellcheck="false" value="https://acscloud-test.hitrust-us.com/acs-auth-v3/auth/V/220/eff82784-e641-8477-3b5b-f14c2ed2ee10/123/areq" />

@@ -727,6 +727,42 @@ def test_transaction_for_case_sets_browser_language_from_case_name():
     assert english["payload"]["browserLanguage"] == "en-US"
 
 
+def test_generated_wording_case_uses_locale_and_base_case_metadata():
+    generated_case = {
+        "id": "case35_zh_TW",
+        "baseCaseId": "case35",
+        "browserLanguage": "zh-TW",
+        "functionPoint": "Resend code Authentication (zh_TW)",
+        "automation": {"status": "automatable", "tags": ["otp", "pa", "resend"]},
+        "availability": {"enabled": True, "reason": ""},
+    }
+
+    transaction = server_module._transaction_for_case(
+        generated_case,
+        {"payload": {"messageType": "AReq", "browserLanguage": "en-US"}},
+    )
+
+    assert transaction["payload"]["browserLanguage"] == "zh-TW"
+    assert transaction["payload"]["messageCategory"] == "01"
+    assert transaction["resendDelaySeconds"] == 30
+    assert server_module.live_skip_reason(generated_case) is None
+
+
+def test_missing_prompt_text_accepts_excel_placeholders_and_html_breaks():
+    expected = [
+        "The verification code has been sent via SMS to {0}.<br><br>"
+        "Merchant: {1}<br>Total amount: {2} {4}<br>Purchase date: {3} (GMT+0)"
+    ]
+    visible = [
+        "The verification code has been sent via SMS to ***123.",
+        "Merchant: Demo Merchant",
+        "Total amount: 100.00 TWD",
+        "Purchase date: 2026-07-14 08:00:00 (GMT+0)",
+    ]
+
+    assert server_module._missing_prompt_text(expected, visible) == []
+
+
 def test_transaction_for_case_applies_3ri_fields_and_invalid_card():
     base_transaction = {
         "payload": {

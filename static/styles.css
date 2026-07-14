@@ -307,6 +307,35 @@ textarea.evidence {
   margin-bottom: 10px;
 }
 
+.wording-import-controls {
+  align-items: end;
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  padding-bottom: 12px;
+}
+
+.wording-import-controls button {
+  min-height: 42px;
+  white-space: nowrap;
+}
+
+.wording-import-status {
+  color: var(--muted);
+  font-size: 12px;
+  grid-column: 1 / -1;
+  line-height: 1.45;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.wording-import-status.error,
+.case-unavailable-reason {
+  color: var(--danger);
+}
+
 .case-row {
   align-items: center;
   background: #fbfcfd;
@@ -394,6 +423,16 @@ textarea.evidence {
   gap: 12px;
   justify-content: space-between;
   margin-bottom: 12px;
+}
+
+.case-row.unavailable {
+  background: #f4f5f6;
+}
+
+.case-unavailable-reason {
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .case-tracking {
@@ -615,7 +654,8 @@ h2 {
   .result-comparison,
   .split,
   .options-row,
-  .sit-options {
+  .sit-options,
+  .wording-import-controls {
     grid-template-columns: 1fr;
   }
 

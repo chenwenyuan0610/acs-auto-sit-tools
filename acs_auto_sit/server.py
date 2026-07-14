@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import mimetypes
+import re
 import time
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -10,7 +12,7 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, unquote
+from urllib.parse import parse_qs, unquote, urlsplit
 from uuid import uuid4
 
 from acs_auto_sit.challenge import b64url_json, decode_b64url_json, parse_challenge_page
@@ -35,6 +37,12 @@ from acs_auto_sit.three_ds import (
     requires_challenge,
 )
 from acs_auto_sit.transaction_result_provider import simulated_transaction_result_for_acs_trans_id
+from acs_auto_sit.wording_profiles import (
+    DEFAULT_SUPPORTED_LOCALES,
+    DEFAULT_WORDING_PROFILES_PATH,
+    import_wording_workbook,
+    load_wording_profiles,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -46,39 +54,49 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
     server_version = "AcsAutoSit/0.1"
 
     def do_GET(self) -> None:
-        if self.path == "/":
+        parsed = urlsplit(self.path)
+        path = parsed.path
+        query = parse_qs(parsed.query)
+        if path == "/":
             self._serve_static("index.html")
             return
-        if self.path == "/api/sit/browser-cases":
-            self._handle_browser_cases()
+        if path == "/api/sit/browser-cases":
+            self._handle_browser_cases(query)
             return
-        if self.path == "/api/sit/issuer-modes":
+        if path == "/api/sit/issuer-modes":
             self._handle_issuer_modes()
             return
-        if self.path.startswith("/static/"):
-            self._serve_static(unquote(self.path.removeprefix("/static/")))
+        if path == "/api/sit/wording-profiles":
+            self._handle_wording_profiles()
+            return
+        if path.startswith("/static/"):
+            self._serve_static(unquote(path.removeprefix("/static/")))
             return
         self._json_response({"error": "Not found"}, HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:
         try:
-            if self.path == "/api/areq":
+            path = urlsplit(self.path).path
+            if path == "/api/areq":
                 self._handle_areq()
                 return
-            if self.path == "/api/creq":
+            if path == "/api/creq":
                 self._handle_creq()
                 return
-            if self.path == "/api/notification":
+            if path == "/api/notification":
                 self._handle_notification()
                 return
-            if self.path == "/api/otp/simulated":
+            if path == "/api/otp/simulated":
                 self._handle_simulated_otp()
                 return
-            if self.path == "/api/transaction-result/simulated":
+            if path == "/api/transaction-result/simulated":
                 self._handle_simulated_transaction_result()
                 return
-            if self.path == "/api/sit/run":
+            if path == "/api/sit/run":
                 self._handle_sit_run()
+                return
+            if path == "/api/sit/wording-profiles/import":
+                self._handle_wording_profile_import()
                 return
             self._json_response({"error": "Not found"}, HTTPStatus.NOT_FOUND)
         except json.JSONDecodeError as exc:
@@ -136,12 +154,75 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
             )
         )
 
-    def _handle_browser_cases(self) -> None:
-        catalog = load_browser_case_catalog()
+    def _handle_browser_cases(self, query: dict[str, list[str]]) -> None:
+        issuer_id = str((query.get("issuerId") or ["default"])[0] or "default")
+        issuer_mode = str((query.get("issuerMode") or ["direct_otp"])[0] or "direct_otp")
+        catalog = load_browser_case_catalog(
+            wording_profiles_path=self._wording_profiles_path(),
+            issuer_id=issuer_id,
+            issuer_mode=issuer_mode,
+        )
         self._json_response({"ok": True, **catalog})
 
     def _handle_issuer_modes(self) -> None:
         self._json_response({"ok": True, **issuer_mode_catalog()})
+
+    def _handle_wording_profiles(self) -> None:
+        path = self._wording_profiles_path()
+        profiles = load_wording_profiles(path) if path else None
+        if not profiles:
+            self._json_response(
+                {
+                    "ok": True,
+                    "imported": False,
+                    "defaultSupportedLocales": list(DEFAULT_SUPPORTED_LOCALES),
+                    "issuers": [],
+                    "summary": {"issuerCount": 0, "localeCount": 0, "wordingCount": 0},
+                }
+            )
+            return
+        self._json_response(
+            {
+                "ok": True,
+                "imported": True,
+                "sourceFile": profiles.get("sourceFile", ""),
+                "importedAt": profiles.get("importedAt", ""),
+                "defaultSupportedLocales": profiles.get("defaultSupportedLocales") or list(DEFAULT_SUPPORTED_LOCALES),
+                "issuers": list((profiles.get("issuers") or {}).values()),
+                "summary": profiles.get("summary") or {},
+            }
+        )
+
+    def _handle_wording_profile_import(self) -> None:
+        envelope = self._read_json_body()
+        file_name = str(envelope.get("fileName") or "").strip()
+        encoded = str(envelope.get("contentBase64") or "").strip()
+        if not file_name.lower().endswith(".xlsx"):
+            raise ValueError("Wording profile file must use the .xlsx extension.")
+        if not encoded:
+            raise ValueError("contentBase64 is required.")
+        try:
+            content = base64.b64decode(encoded, validate=True)
+        except ValueError as exc:
+            raise ValueError("contentBase64 is not valid base64.") from exc
+        destination = self._wording_profiles_path()
+        if not destination:
+            raise ValueError("Wording profile storage is not configured.")
+        imported = import_wording_workbook(
+            content,
+            destination,
+            source_file=file_name,
+        )
+        self._json_response(
+            {
+                "ok": True,
+                "sourceFile": imported.get("sourceFile", ""),
+                "importedAt": imported.get("importedAt", ""),
+                "defaultSupportedLocales": imported.get("defaultSupportedLocales") or [],
+                "issuers": list((imported.get("issuers") or {}).values()),
+                "summary": imported.get("summary") or {},
+            }
+        )
 
     def _handle_sit_run(self) -> None:
         envelope = self._read_json_body()
@@ -168,6 +249,7 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
             return
 
         issuer_mode = resolve_issuer_mode(str(envelope.get("issuerMode") or ""))
+        issuer_id = str(envelope.get("issuerId") or "default")
         preferred_challenge = resolve_preferred_challenge(str(envelope.get("preferredChallenge") or ""))
         transaction = envelope.get("transaction") or {}
         if not isinstance(transaction, dict):
@@ -179,12 +261,15 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
             _local_notification_url(self),
             issuer_mode,
             preferred_challenge,
+            issuer_id,
+            self._wording_profiles_path(),
         )
         self._json_response(
             {
                 "ok": True,
                 "mode": mode,
                 "issuerMode": issuer_mode,
+                "issuerId": issuer_id,
                 "preferredChallenge": preferred_challenge,
                 "summary": _summarize_sit_results(results),
                 "results": results,
@@ -197,6 +282,9 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
         if not isinstance(value, dict):
             raise ValueError("Request body must be a JSON object.")
         return value
+
+    def _wording_profiles_path(self) -> Path | None:
+        return getattr(self.server, "wording_profiles_path", None)
 
     def _read_text_body(self) -> str:
         length = int(self.headers.get("Content-Length", "0"))
@@ -229,8 +317,15 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
 
-def create_server(host: str = "127.0.0.1", port: int = 8000) -> ThreadingHTTPServer:
-    return ThreadingHTTPServer((host, port), AcsAutoSitHandler)
+def create_server(
+    host: str = "127.0.0.1",
+    port: int = 8000,
+    *,
+    wording_profiles_path: Path | None = None,
+) -> ThreadingHTTPServer:
+    server = ThreadingHTTPServer((host, port), AcsAutoSitHandler)
+    server.wording_profiles_path = wording_profiles_path  # type: ignore[attr-defined]
+    return server
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -239,7 +334,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", default=8000, type=int)
     args = parser.parse_args(argv)
 
-    server = create_server(args.host, args.port)
+    server = create_server(
+        args.host,
+        args.port,
+        wording_profiles_path=DEFAULT_WORDING_PROFILES_PATH,
+    )
     host, port = server.server_address
     print(f"ACS Auto SIT running at http://{host}:{port}/")
     try:
@@ -388,8 +487,14 @@ def _run_live_sit_cases(
     notification_url: str,
     issuer_mode: dict[str, Any],
     preferred_challenge: str,
+    issuer_id: str = "default",
+    wording_profiles_path: Path | None = None,
 ) -> list[dict[str, Any]]:
-    cases = browser_cases_by_id()
+    cases = browser_cases_by_id(
+        wording_profiles_path=wording_profiles_path,
+        issuer_id=issuer_id,
+        issuer_mode=issuer_mode["id"],
+    )
     results: list[dict[str, Any]] = []
     case_delay_seconds = _read_case_delay_seconds(transaction)
 
@@ -974,9 +1079,24 @@ def _missing_prompt_text(expected_prompts: list[Any], visible_text: list[str]) -
         normalized = _normalize_expected_prompt_text(text)
         if not normalized:
             continue
-        if normalized not in visible:
+        if not _expected_prompt_matches(normalized, visible):
             missing.append(text)
     return missing
+
+
+def _expected_prompt_matches(expected: str, visible: str) -> bool:
+    if not re.search(r"\{\d+\}|<br\s*/?>", expected, flags=re.IGNORECASE):
+        return expected in visible
+    parts = re.split(r"(\{\d+\}|<br\s*/?>)", expected, flags=re.IGNORECASE)
+    pattern_parts: list[str] = []
+    for part in parts:
+        if re.fullmatch(r"\{\d+\}", part):
+            pattern_parts.append(r".+?")
+        elif re.fullmatch(r"<br\s*/?>", part, flags=re.IGNORECASE):
+            pattern_parts.append(r"\s*")
+        else:
+            pattern_parts.append(re.escape(part))
+    return re.search("".join(pattern_parts), visible, flags=re.DOTALL) is not None
 
 
 def _normalize_expected_prompt_text(text: str) -> str:
@@ -1073,7 +1193,7 @@ def _case_areq_record(case_id: str, transaction: dict[str, Any]) -> dict[str, An
 
 def _transaction_for_case(case: dict[str, Any], transaction: dict[str, Any]) -> dict[str, Any]:
     case_transaction = deepcopy(transaction)
-    case_id = str(case.get("id") or "")
+    case_id = str(case.get("baseCaseId") or case.get("id") or "")
     payload = deepcopy(case_transaction.get("payload"))
     if isinstance(payload, dict):
         card_number = _card_number_for_case(case, case_transaction)
@@ -1108,6 +1228,9 @@ def _transaction_for_case(case: dict[str, Any], transaction: dict[str, Any]) -> 
 
 
 def _browser_language_for_case(case: dict[str, Any]) -> str:
+    configured = str(case.get("browserLanguage") or "").strip()
+    if configured:
+        return configured
     name = str(case.get("functionPoint") or "").lower()
     if "simplified chinese" in name:
         return "zh-CN"

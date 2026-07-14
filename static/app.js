@@ -24,6 +24,10 @@ const selectAllCasesInput = document.querySelector("#selectAllCases");
 const runSelectedCasesButton = document.querySelector("#runSelectedCases");
 const runAllCasesButton = document.querySelector("#runAllCases");
 const issuerModeInput = document.querySelector("#issuerMode");
+const issuerProfileInput = document.querySelector("#issuerProfile");
+const wordingWorkbookInput = document.querySelector("#wordingWorkbook");
+const importWordingWorkbookButton = document.querySelector("#importWordingWorkbook");
+const wordingImportStatusEl = document.querySelector("#wordingImportStatus");
 const preferredChallengeInput = document.querySelector("#preferredChallenge");
 const otpSourceModeInput = document.querySelector("#otpSourceMode");
 const otpLookupUrlInput = document.querySelector("#otpLookupUrl");
@@ -64,6 +68,25 @@ function parseJsonField(field, label) {
 
 function pretty(value) {
   return JSON.stringify(value, null, 2);
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
 }
 
 function acsTransIdForResult(result) {
@@ -391,15 +414,18 @@ function renderCaseList() {
   caseListEl.innerHTML = "";
   for (const caseItem of sitCases) {
     const status = statusForCase(caseItem);
+    const unavailable = caseItem.availability?.enabled === false;
+    const unavailableReason = caseItem.availability?.reason || "";
     const row = document.createElement("button");
     row.type = "button";
-    row.className = `case-row ${selectedCaseId === caseItem.id ? "active" : ""}`;
+    row.className = `case-row ${selectedCaseId === caseItem.id ? "active" : ""} ${unavailable ? "unavailable" : ""}`;
     row.dataset.caseId = caseItem.id;
     row.innerHTML = `
-      <input class="case-check" type="checkbox" aria-label="選取 ${caseItem.id}" data-case-id="${caseItem.id}">
+      <input class="case-check" type="checkbox" aria-label="選取 ${escapeHtml(caseItem.id)}" data-case-id="${escapeHtml(caseItem.id)}" ${unavailable ? "disabled" : ""}>
       <span class="case-main">
-        <span class="case-id">${caseItem.id}</span>
-        <span class="case-name">${caseItem.functionPoint}</span>
+        <span class="case-id">${escapeHtml(caseItem.id)}</span>
+        <span class="case-name">${escapeHtml(caseItem.functionPoint)}</span>
+        ${unavailable ? `<span class="case-unavailable-reason">${escapeHtml(unavailableReason)}</span>` : ""}
       </span>
       <span class="case-status ${status}">${statusLabel(status)}</span>
     `;
@@ -460,14 +486,14 @@ function checkedCaseIds() {
 }
 
 function setCaseCheckboxes(checked) {
-  document.querySelectorAll(".case-check").forEach((input) => {
+  document.querySelectorAll(".case-check:not(:disabled)").forEach((input) => {
     input.checked = checked;
   });
   updateSelectAllState();
 }
 
 function updateSelectAllState() {
-  const checks = Array.from(document.querySelectorAll(".case-check"));
+  const checks = Array.from(document.querySelectorAll(".case-check:not(:disabled)"));
   if (!selectAllCasesInput || checks.length === 0) {
     return;
   }
@@ -481,7 +507,11 @@ async function loadSitCases() {
     return;
   }
   try {
-    const result = await getApi("/api/sit/browser-cases");
+    const params = new URLSearchParams({
+      issuerId: issuerProfileInput?.value || "default",
+      issuerMode: issuerModeInput?.value || "direct_otp",
+    });
+    const result = await getApi(`/api/sit/browser-cases?${params}`);
     sitCases = result.cases || [];
     caseCountEl.textContent = `${result.caseCount || sitCases.length} 個案例`;
     selectedCaseId = sitCases[0]?.id || "";
@@ -491,6 +521,67 @@ async function loadSitCases() {
     }
   } catch (error) {
     caseRunOutput.textContent = pretty({ error: error.message });
+  }
+}
+
+async function loadWordingProfiles(preferredIssuerId = issuerProfileInput?.value || "default") {
+  if (!issuerProfileInput) {
+    return;
+  }
+  try {
+    const result = await getApi("/api/sit/wording-profiles");
+    const issuers = result.issuers || [];
+    issuerProfileInput.replaceChildren();
+    if (issuers.length === 0) {
+      const option = document.createElement("option");
+      option.value = "default";
+      option.textContent = "預設發卡行";
+      issuerProfileInput.appendChild(option);
+    } else {
+      for (const issuer of issuers) {
+        const option = document.createElement("option");
+        option.value = issuer.id;
+        option.textContent = `${issuer.name || issuer.id} (${(issuer.supportedLocales || []).join(", ")})`;
+        issuerProfileInput.appendChild(option);
+      }
+    }
+    issuerProfileInput.value = Array.from(issuerProfileInput.options).some(
+      (option) => option.value === preferredIssuerId
+    ) ? preferredIssuerId : issuerProfileInput.options[0]?.value || "default";
+    const summary = result.summary || {};
+    wordingImportStatusEl.textContent = result.imported
+      ? `${result.sourceFile || "話術設定"}：${summary.issuerCount || 0} 個發卡行、${summary.localeCount || 0} 種語言、${summary.wordingCount || 0} 筆話術`
+      : "尚未匯入話術設定；目前使用原始案例內容";
+    wordingImportStatusEl.classList.remove("error");
+  } catch (error) {
+    wordingImportStatusEl.textContent = error.message;
+    wordingImportStatusEl.classList.add("error");
+  }
+}
+
+async function importWordingWorkbook() {
+  const file = wordingWorkbookInput?.files?.[0];
+  if (!file) {
+    wordingImportStatusEl.textContent = "請先選擇 .xlsx 話術檔";
+    wordingImportStatusEl.classList.add("error");
+    return;
+  }
+  importWordingWorkbookButton.disabled = true;
+  wordingImportStatusEl.textContent = "匯入中...";
+  wordingImportStatusEl.classList.remove("error");
+  try {
+    const result = await postApi("/api/sit/wording-profiles/import", {
+      fileName: file.name,
+      contentBase64: arrayBufferToBase64(await file.arrayBuffer()),
+    });
+    const preferredIssuerId = result.issuers?.[0]?.id || "default";
+    await loadWordingProfiles(preferredIssuerId);
+    await loadSitCases();
+  } catch (error) {
+    wordingImportStatusEl.textContent = error.message;
+    wordingImportStatusEl.classList.add("error");
+  } finally {
+    importWordingWorkbookButton.disabled = false;
   }
 }
 
@@ -543,6 +634,7 @@ async function runSitCases(caseIds) {
     const result = await postApi("/api/sit/run", {
       caseIds,
       mode: "live",
+      issuerId: issuerProfileInput?.value || "default",
       issuerMode: issuerModeInput?.value || "direct_otp",
       preferredChallenge: preferredChallengeInput?.value || "auto",
       transaction: readCommonEnvelope(
@@ -587,7 +679,15 @@ selectAllCasesInput?.addEventListener("change", () => {
 
 runSelectedCasesButton?.addEventListener("click", () => runSitCases(checkedCaseIds()));
 
-runAllCasesButton?.addEventListener("click", () => runSitCases(sitCases.map((caseItem) => caseItem.id)));
+runAllCasesButton?.addEventListener("click", () => runSitCases(
+  sitCases
+    .filter((caseItem) => caseItem.availability?.enabled !== false)
+    .map((caseItem) => caseItem.id)
+));
+
+issuerProfileInput?.addEventListener("change", loadSitCases);
+issuerModeInput?.addEventListener("change", loadSitCases);
+importWordingWorkbookButton?.addEventListener("click", importWordingWorkbook);
 
 sendAreqButton.addEventListener("click", async () => {
   sendAreqButton.disabled = true;
@@ -644,8 +744,13 @@ sendAreqButton.addEventListener("click", async () => {
   }
 });
 
-loadSitCases();
-loadIssuerModes();
+async function initializeSitRunner() {
+  await loadIssuerModes();
+  await loadWordingProfiles();
+  await loadSitCases();
+}
+
+initializeSitRunner();
 renderSitRunSummary(null);
 
 sendCreqButton.addEventListener("click", async () => {

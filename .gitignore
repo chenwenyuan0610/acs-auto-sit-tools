@@ -4,3 +4,4 @@ __pycache__/
 .pytest_cache/
 *.log
 live_*.json
+data/wording_profiles.json
