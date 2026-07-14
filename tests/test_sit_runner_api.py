@@ -24,7 +24,16 @@ def test_browser_cases_api_returns_case_list():
         _stop_server(app_server, app_thread)
 
     assert result["ok"] is True
-    assert result["caseCount"] == 50
+    assert result["caseCount"] == 43
+    assert {
+        "case05",
+        "case06",
+        "case15",
+        "case16",
+        "case17",
+        "case21",
+        "case22",
+    }.isdisjoint({case["id"] for case in result["cases"]})
     assert result["cases"][0]["id"] == "case01"
     assert result["cases"][0]["status"] == "pending"
     assert result["cases"][0]["caseImplementation"]["status"] == "partial"
@@ -382,7 +391,7 @@ def test_live_runner_runs_prompt_cases_with_expected_otp_attempts(monkeypatch):
     monkeypatch.setattr(server_module, "_run_areq_flow", fake_run_areq_flow)
 
     results = server_module._run_live_sit_cases(
-        ["case04", "case05", "case06"],
+        ["case04"],
         {
             "url": "http://127.0.0.1/not-used",
             "headers": {"Content-Type": "application/json"},
@@ -394,8 +403,8 @@ def test_live_runner_runs_prompt_cases_with_expected_otp_attempts(monkeypatch):
         "auto",
     )
 
-    assert [call["otpAttempts"] for call in calls] == [["empty"], ["alpha"], ["special"]]
-    assert [result["status"] for result in results] == ["pass", "pass", "pass"]
+    assert [call["otpAttempts"] for call in calls] == [["empty"]]
+    assert [result["status"] for result in results] == ["pass"]
     assert all(not result["details"]["prompt"]["missing"] for result in results)
 
 
@@ -755,21 +764,20 @@ def test_transaction_for_case_applies_excel_purchase_currency():
 
     actual = {
         case_id: server_module._transaction_for_case(cases[case_id], base_transaction)["payload"]["purchaseCurrency"]
-        for case_id in ("case18", "case19", "case20", "case21")
+        for case_id in ("case18", "case19", "case20")
     }
 
     assert actual == {
         "case18": "840",
         "case19": "156",
         "case20": "978",
-        "case21": "007",
     }
 
 
 def test_live_runner_excludes_cases_requiring_external_state_or_long_waits():
     cases = server_module.browser_cases_by_id()
 
-    for case_id in ("case15", "case16", "case17", "case22", "case47", "case48", "case49", "case50"):
+    for case_id in ("case47", "case48", "case49", "case50"):
         reason = server_module.live_skip_reason(cases[case_id])
         assert reason is not None
         assert "not included in this live run" in reason
@@ -938,7 +946,7 @@ def test_challenge_headers_use_case_browser_language():
     assert server_module._challenge_headers_for_payload({}) == {}
 
 
-def test_live_runner_skips_admin_error_cases_and_matches_case21(monkeypatch):
+def test_live_runner_reports_deleted_case_ids_as_not_found(monkeypatch):
     calls = []
 
     def fake_run_areq_flow(envelope, notification_url):
@@ -971,10 +979,9 @@ def test_live_runner_skips_admin_error_cases_and_matches_case21(monkeypatch):
     )
 
     assert [result["caseId"] for result in results] == ["case15", "case17", "case21"]
-    assert [result["status"] for result in results] == ["skipped", "skipped", "pass"]
-    assert len(calls) == 1
-    assert calls[0]["payload"]["purchaseCurrency"] == "007"
-    assert results[2]["details"]["errorMatch"]["expected"]["code"] == "304"
+    assert [result["status"] for result in results] == ["error", "error", "error"]
+    assert all("not found in the Browser SIT catalog" in result["reason"] for result in results)
+    assert calls == []
 
 
 def test_live_runner_skips_admin_currency_case_and_runs_cases18_to20(monkeypatch):
@@ -1007,7 +1014,8 @@ def test_live_runner_skips_admin_currency_case_and_runs_cases18_to20(monkeypatch
     assert [call["otpAttempts"] for call in calls] == [["success"], ["success"], ["success"]]
     assert [call["payload"]["purchaseCurrency"] for call in calls] == ["840", "156", "978"]
     assert [result["caseId"] for result in results] == ["case16", "case18", "case19", "case20"]
-    assert [result["status"] for result in results] == ["skipped", "pass", "pass", "pass"]
+    assert [result["status"] for result in results] == ["error", "pass", "pass", "pass"]
+    assert "not found in the Browser SIT catalog" in results[0]["reason"]
 
 
 def test_live_runner_runs_localized_otp_page_prompt_cases(monkeypatch):

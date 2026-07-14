@@ -8,7 +8,16 @@ def test_direct_otp_case_plan_covers_every_browser_case():
 
     plans = [build_direct_otp_case_plan(case) for case in catalog["cases"]]
 
-    assert len(plans) == 50
+    assert len(plans) == 43
+    assert {
+        "case05",
+        "case06",
+        "case15",
+        "case16",
+        "case17",
+        "case21",
+        "case22",
+    }.isdisjoint({plan["caseId"] for plan in plans})
     assert all(plan["mode"] == "direct_otp" for plan in plans)
     assert all(plan["coverage"] == "implemented" for plan in plans)
     assert all(plan["actions"] for plan in plans)

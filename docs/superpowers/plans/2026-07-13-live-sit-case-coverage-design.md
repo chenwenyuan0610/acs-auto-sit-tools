@@ -24,13 +24,11 @@ RReq, and error assertions are not relaxed to match current ACS output.
 
 ## Excluded Behavior
 
-- `case15`-`case17`: require ACS Admin payment-network or currency-minor-unit
-  state changes.
-- `case22`: requires the long challenge timeout window.
+- `case15`-`case17` and `case22`: removed from the active Browser SIT catalog.
 - `case47`-`case50`: require OTP expiration waits.
 
-These cases remain visible in the Excel-derived catalog but are skipped by the
-live runner with a clear reason.
+The removed cases are no longer visible in the active catalog. `case47`-`case50`
+remain visible and are skipped by the live runner with a clear reason.
 
 ## Verification
 

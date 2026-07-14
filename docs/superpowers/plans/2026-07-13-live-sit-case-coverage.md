@@ -33,7 +33,7 @@
 - Consumes: Excel-derived case dictionaries and the transaction envelope.
 - Produces: `_transaction_for_case(case, transaction)` with card, channel, 3RI, currency, language, and resend-delay overrides.
 
-- [ ] Add failing tests asserting invalid card `4771048901645589`, 3RI fields for `case11`/`case12`, currencies for `case18`-`case21`, and skip reasons for Admin/timeout/expiry cases.
+- [ ] Add failing tests asserting invalid card `4771048901645589`, 3RI fields for `case11`/`case12`, currencies for `case18`-`case20`, and skip reasons for the remaining timeout/expiry cases.
 - [ ] Run focused tests and confirm failures identify missing defaults and payload overrides.
 - [ ] Implement the smallest case-specific mapping and supported-case changes.
 - [ ] Run focused tests and confirm they pass.

@@ -18,8 +18,6 @@ LIVE_RUNNER_SUPPORTED_CASE_IDS = {
     "case02",
     "case03",
     "case04",
-    "case05",
-    "case06",
     "case07",
     "case08",
     "case09",
@@ -30,7 +28,6 @@ LIVE_RUNNER_SUPPORTED_CASE_IDS = {
     "case18",
     "case19",
     "case20",
-    "case21",
     "case24",
     "case25",
     "case26",
@@ -55,10 +52,6 @@ LIVE_RUNNER_SUPPORTED_CASE_IDS = {
 }
 
 LIVE_RUNNER_EXCLUDED_CASE_REASONS = {
-    "case15": "Case is not included in this live run because it requires ACS Admin payment-network state changes.",
-    "case16": "Case is not included in this live run because it requires ACS Admin currency-minor-unit state changes.",
-    "case17": "Case is not included in this live run because it requires ACS Admin currency-minor-unit state changes.",
-    "case22": "Case is not included in this live run because it requires a long challenge-timeout wait.",
     "case47": "Case is not included in this live run (manual_or_slow: OTP expiration wait).",
     "case48": "Case is not included in this live run (manual_or_slow: OTP expiration wait).",
     "case49": "Case is not included in this live run (manual_or_slow: OTP expiration wait).",

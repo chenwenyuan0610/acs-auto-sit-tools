@@ -34,6 +34,7 @@ from acs_auto_sit.three_ds import (
     extract_acs_values,
     requires_challenge,
 )
+from acs_auto_sit.transaction_result_provider import simulated_transaction_result_for_acs_trans_id
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -72,6 +73,9 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
                 return
             if self.path == "/api/otp/simulated":
                 self._handle_simulated_otp()
+                return
+            if self.path == "/api/transaction-result/simulated":
+                self._handle_simulated_transaction_result()
                 return
             if self.path == "/api/sit/run":
                 self._handle_sit_run()
@@ -122,6 +126,14 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
                 "acsTransID": acs_trans_id,
                 "otp": simulated_otp_for_acs_trans_id(acs_trans_id),
             }
+        )
+
+    def _handle_simulated_transaction_result(self) -> None:
+        envelope = self._read_json_body()
+        self._json_response(
+            simulated_transaction_result_for_acs_trans_id(
+                str(envelope.get("acsTransID") or "")
+            )
         )
 
     def _handle_browser_cases(self) -> None:
@@ -1084,7 +1096,6 @@ def _transaction_for_case(case: dict[str, Any], transaction: dict[str, Any]) -> 
             "case18": "840",
             "case19": "156",
             "case20": "978",
-            "case21": "007",
         }.get(case_id)
         if purchase_currency:
             payload["purchaseCurrency"] = purchase_currency

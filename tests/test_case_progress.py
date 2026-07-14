@@ -91,9 +91,9 @@ def test_browser_case_progress_marks_completed_otp_modes_done_for_all_cases():
 
     progress = build_browser_case_progress(catalog["cases"])
 
-    assert progress["summary"]["total"] == 50
-    assert progress["summary"]["directOtpCompleted"] == 50
-    assert progress["summary"]["selectionSmsOtpCompleted"] == 50
+    assert progress["summary"]["total"] == 43
+    assert progress["summary"]["directOtpCompleted"] == 43
+    assert progress["summary"]["selectionSmsOtpCompleted"] == 43
     assert progress["summary"]["pendingIssuerModes"] == [
         "selection_sms_oob",
         "direct_oob",
@@ -101,6 +101,21 @@ def test_browser_case_progress_marks_completed_otp_modes_done_for_all_cases():
     ]
     assert all(item["directOtp"]["status"] == "completed" for item in progress["cases"])
     assert all(item["selectionSmsOtp"]["status"] == "completed" for item in progress["cases"])
+
+
+def test_browser_case_catalog_excludes_deleted_cases():
+    catalog = load_browser_case_catalog()
+
+    assert catalog["caseCount"] == 43
+    assert {
+        "case05",
+        "case06",
+        "case15",
+        "case16",
+        "case17",
+        "case21",
+        "case22",
+    }.isdisjoint({case["id"] for case in catalog["cases"]})
 
 
 def test_browser_case_progress_exposes_pending_modes_per_case():

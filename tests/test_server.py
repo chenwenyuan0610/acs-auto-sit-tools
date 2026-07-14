@@ -358,6 +358,35 @@ def test_notification_api_decodes_form_encoded_cres():
     assert result["notification"]["cres"]["transStatus"] == "Y"
 
 
+def test_simulated_transaction_result_api_returns_cavv_by_acs_trans_id():
+    app_server = create_server("127.0.0.1", 0)
+    app_thread = Thread(target=app_server.serve_forever, daemon=True)
+    app_thread.start()
+
+    body = json.dumps({"acsTransID": "acs-trans-1"}).encode("utf-8")
+    req = request.Request(
+        f"http://127.0.0.1:{app_server.server_port}/api/transaction-result/simulated",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with request.urlopen(req, timeout=5) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    finally:
+        app_server.shutdown()
+        app_thread.join(timeout=5)
+        app_server.server_close()
+
+    assert result["ok"] is True
+    assert result["acsTransID"] == "acs-trans-1"
+    assert result["transaction"]["transStatus"] == "Y"
+    assert result["transaction"]["eci"] == "02"
+    assert result["transaction"]["cavv"]
+    assert result["checks"]["cavv"]["status"] == "pass"
+
+
 def test_areq_api_marks_transport_error_as_not_ok():
     app_server = create_server("127.0.0.1", 0)
     app_thread = Thread(target=app_server.serve_forever, daemon=True)
