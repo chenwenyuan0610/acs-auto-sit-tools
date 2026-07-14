@@ -672,6 +672,14 @@ def _normalize_raw_workbook(
     for source_sheet in source_sheets:
         rows = _sheet_records(workbook[source_sheet], RAW_REQUIRED_COLUMNS)
         for row in rows:
+            identifiers = [_text(row.get(column)) for column in RAW_REQUIRED_COLUMNS]
+            non_metadata_values = [
+                value
+                for column, value in row.items()
+                if column not in RAW_METADATA_COLUMNS and _text(value)
+            ]
+            if not any(identifiers) and not non_metadata_values:
+                continue
             device_channel = _required_text(row, "設備通道").upper()
             if device_channel in {"B", "BRW", "BROWSER"}:
                 device_channel = "BROWSER"

@@ -102,7 +102,13 @@ def _wording_row(locale, field_key, content, *, issuer_id=None):
     )
 
 
-def _raw_workbook_bytes(*, duplicate_sms=False, conflicting_sms=False, omit_email_column=None):
+def _raw_workbook_bytes(
+    *,
+    duplicate_sms=False,
+    conflicting_sms=False,
+    omit_email_column=None,
+    metadata_only_email_row=False,
+):
     workbook = Workbook()
     workbook.remove(workbook.active)
     source_rows = {
@@ -136,6 +142,10 @@ def _raw_workbook_bytes(*, duplicate_sms=False, conflicting_sms=False, omit_emai
             changed = list(row)
             changed[4] = "不同的簡訊驗證標題"
             sheet.append(changed)
+        if sheet_name == "Email" and metadata_only_email_row:
+            metadata_row = [None] * len(headers)
+            metadata_row[headers.index("是否完成")] = "pass"
+            sheet.append(metadata_row)
 
     output = BytesIO()
     workbook.save(output)
@@ -261,6 +271,16 @@ def test_import_raw_workbook_rejects_conflicting_duplicate_runtime_key(tmp_path)
             _raw_workbook_bytes(conflicting_sms=True),
             tmp_path / "wording_profiles.json",
         )
+
+
+def test_import_raw_workbook_ignores_metadata_only_row(tmp_path):
+    imported = import_wording_workbook(
+        _raw_workbook_bytes(metadata_only_email_row=True),
+        tmp_path / "wording_profiles.json",
+    )
+
+    assert imported["summary"]["normalizedRowCount"] == 4
+    assert imported["summary"]["wordingCount"] == 27
 
 
 def _normalized_profiles(*, omit_code=None):
