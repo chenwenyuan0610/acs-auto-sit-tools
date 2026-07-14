@@ -235,6 +235,7 @@ def _case_summary(case: dict[str, Any]) -> dict[str, Any]:
         "browserLanguage",
         "wordingScenario",
         "wording",
+        "flow",
         "availability",
     ):
         if key in case:

@@ -405,6 +405,85 @@ def test_build_localized_cases_disables_incomplete_required_fields():
     assert "challenge_message" in case["availability"]["reason"]
 
 
+@pytest.mark.parametrize(
+    ("issuer_mode", "source_sheet", "destination"),
+    (
+        ("sms_otp", "SMS", "sms"),
+        ("email_otp", "Email", "email"),
+        ("direct_oob", "OOB", "oob"),
+    ),
+)
+def test_build_raw_localized_cases_filters_direct_mode_source_sheet(
+    tmp_path,
+    issuer_mode,
+    source_sheet,
+    destination,
+):
+    profiles = import_wording_workbook(
+        _raw_workbook_bytes(),
+        tmp_path / f"{issuer_mode}.json",
+    )
+
+    cases = build_localized_wording_cases(
+        profiles,
+        _source_templates(),
+        issuer_mode=issuer_mode,
+    )
+
+    assert cases
+    assert {case["wording"]["sourceSheet"] for case in cases} == {source_sheet}
+    assert {case["flow"]["destination"] for case in cases} == {destination}
+    assert all(case["flow"]["kind"] == "direct" for case in cases)
+    assert len({case["id"] for case in cases}) == len(cases)
+
+
+def test_build_raw_localized_cases_generates_all_single_select_destinations(tmp_path):
+    profiles = import_wording_workbook(
+        _raw_workbook_bytes(),
+        tmp_path / "selection.json",
+    )
+
+    cases = build_localized_wording_cases(
+        profiles,
+        _source_templates(),
+        issuer_mode="selection_sms_email_oob",
+    )
+
+    selection_pages = [case for case in cases if case["flow"]["kind"] == "selection_page"]
+    branches = [case for case in cases if case["flow"]["kind"] == "selection_branch"]
+    assert len(selection_pages) == 1
+    assert selection_pages[0]["flow"]["destinations"] == ["sms", "email", "oob"]
+    assert {case["flow"]["destination"] for case in branches} == {"sms", "email", "oob"}
+    sms_branch = next(case for case in branches if case["flow"]["destination"] == "sms")
+    assert sms_branch["id"] == "ui_select_sms_pa_send_sms_otp_zh_TW"
+    assert [stage["type"] for stage in sms_branch["flow"]["stages"]] == ["single_select", "sms"]
+    assert sms_branch["availability"] == {"enabled": True, "reason": ""}
+    email_branch = next(case for case in branches if case["flow"]["destination"] == "email")
+    assert email_branch["availability"]["enabled"] is False
+    assert "Single Select" in email_branch["availability"]["reason"]
+
+
+def test_build_raw_localized_cases_generates_oob_to_sms_switch_metadata(tmp_path):
+    profiles = import_wording_workbook(
+        _raw_workbook_bytes(),
+        tmp_path / "switch.json",
+    )
+
+    cases = build_localized_wording_cases(
+        profiles,
+        _source_templates(),
+        issuer_mode="default_oob_can_switch_otp",
+    )
+
+    assert len(cases) == 1
+    case = cases[0]
+    assert case["flow"]["kind"] == "oob_switch_sms"
+    assert case["flow"]["switchCreq"] is True
+    assert [stage["type"] for stage in case["flow"]["stages"]] == ["oob", "sms"]
+    assert case["availability"]["enabled"] is False
+    assert "SMS" in case["availability"]["reason"]
+
+
 def test_browser_catalog_replaces_legacy_localized_cases_when_profile_exists(tmp_path):
     profile_path = tmp_path / "wording_profiles.json"
     profile_path.write_text(json.dumps(_normalized_profiles()), encoding="utf-8")
@@ -428,3 +507,21 @@ def test_browser_catalog_replaces_legacy_localized_cases_when_profile_exists(tmp
         "issuerMode": "direct_otp",
         "supportedLocales": list(DEFAULT_SUPPORTED_LOCALES),
     }
+
+
+def test_browser_catalog_preserves_raw_case_flow_metadata(tmp_path):
+    profile_path = tmp_path / "raw-wording-profiles.json"
+    import_wording_workbook(_raw_workbook_bytes(), profile_path)
+
+    catalog = load_browser_case_catalog(
+        progress_path=tmp_path / "missing-progress.json",
+        wording_profiles_path=profile_path,
+        issuer_mode="selection_sms_email_oob",
+    )
+
+    cases = {case["id"]: case for case in catalog["cases"]}
+    generated = cases["ui_select_sms_pa_send_sms_otp_zh_TW"]
+    assert generated["flow"]["kind"] == "selection_branch"
+    assert generated["flow"]["destination"] == "sms"
+    assert generated["availability"]["enabled"] is True
+    assert "case23" not in cases

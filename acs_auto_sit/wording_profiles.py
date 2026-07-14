@@ -194,6 +194,14 @@ def build_localized_wording_cases(
     issuer_id: str = "default",
     issuer_mode: str = "direct_otp",
 ) -> list[dict[str, Any]]:
+    if profiles.get("sourceFormat") == "challenge_ui_info":
+        return _build_raw_localized_wording_cases(
+            profiles,
+            source_cases,
+            issuer_id=issuer_id,
+            issuer_mode=issuer_mode,
+        )
+
     issuers = profiles.get("issuers") or {}
     issuer = issuers.get(issuer_id) or issuers.get("default") or {}
     selected_issuer_id = str(issuer.get("id") or issuer_id or "default")
@@ -247,6 +255,296 @@ def build_localized_wording_cases(
             )
             generated.append(case)
     return generated
+
+
+def _build_raw_localized_wording_cases(
+    profiles: dict[str, Any],
+    source_cases: list[dict[str, Any]],
+    *,
+    issuer_id: str,
+    issuer_mode: str,
+) -> list[dict[str, Any]]:
+    from acs_auto_sit.issuer_modes import resolve_issuer_mode
+
+    mode = resolve_issuer_mode(issuer_mode)
+    destinations = list(mode.get("destinations") or [])
+    templates = {str(case.get("id") or ""): case for case in source_cases}
+    groups = _raw_wording_groups(profiles.get("wordings") or [], issuer_id)
+    by_sheet = {
+        sheet: [group for group in groups if group["sourceSheet"] == sheet]
+        for sheet in RAW_SOURCE_SHEETS
+    }
+
+    if mode["id"] == "default_oob_can_switch_otp":
+        return [
+            _raw_switch_case(group, _matching_group(by_sheet["SMS"], group), templates, mode)
+            for group in by_sheet["OOB"]
+        ]
+
+    if mode["id"].startswith("selection_"):
+        selection_groups = by_sheet["Single Select"]
+        generated = [
+            _raw_case(
+                group,
+                templates,
+                mode,
+                flow_kind="selection_page",
+                destination="selection",
+                stages=[_raw_stage("single_select", group)],
+            )
+            for group in selection_groups
+        ]
+        sheet_by_destination = {"sms": "SMS", "email": "Email", "oob": "OOB"}
+        for destination in destinations:
+            for group in by_sheet[sheet_by_destination[destination]]:
+                selection = _matching_group(selection_groups, group)
+                generated.append(
+                    _raw_case(
+                        group,
+                        templates,
+                        mode,
+                        flow_kind="selection_branch",
+                        destination=destination,
+                        stages=[
+                            _raw_stage("single_select", selection),
+                            _raw_stage(destination, group),
+                        ],
+                        extra_missing=[] if selection else [
+                            f"Missing Single Select wording for category={group['messageCategory']}, "
+                            f"locale={group['locale']}"
+                        ],
+                    )
+                )
+        return generated
+
+    sheet_by_destination = {"sms": "SMS", "email": "Email", "oob": "OOB"}
+    destination = destinations[0]
+    return [
+        _raw_case(
+            group,
+            templates,
+            mode,
+            flow_kind="direct",
+            destination=destination,
+            stages=[_raw_stage(destination, group)],
+        )
+        for group in by_sheet[sheet_by_destination[destination]]
+    ]
+
+
+def _raw_wording_groups(
+    wordings: Iterable[dict[str, Any]],
+    issuer_id: str,
+) -> list[dict[str, Any]]:
+    groups: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    selected_issuer_id = issuer_id or "default"
+    for wording in wordings:
+        wording_issuer = str(wording.get("issuerId") or "default")
+        if wording_issuer not in {"default", selected_issuer_id}:
+            continue
+        if str(wording.get("deviceChannel") or "").upper() != "BROWSER":
+            continue
+        source_sheet = str(wording.get("sourceSheet") or "")
+        key = (
+            source_sheet,
+            str(wording.get("messageCategory") or "").upper(),
+            str(wording.get("wordingCode") or "").upper(),
+            str(wording.get("locale") or ""),
+        )
+        group = groups.setdefault(
+            key,
+            {
+                "sourceSheet": key[0],
+                "messageCategory": key[1],
+                "wordingCode": key[2],
+                "locale": key[3],
+                "fields": {},
+                "completionStatus": str(wording.get("completionStatus") or ""),
+            },
+        )
+        field_key = str(wording.get("fieldKey") or "")
+        content = str(wording.get("content") or "")
+        if field_key and content:
+            group["fields"][field_key] = content
+    sheet_order = {sheet: index for index, sheet in enumerate(RAW_SOURCE_SHEETS)}
+    return sorted(
+        groups.values(),
+        key=lambda group: (
+            sheet_order.get(group["sourceSheet"], len(sheet_order)),
+            group["messageCategory"],
+            group["wordingCode"],
+            _locale_sort_key(group["locale"]),
+        ),
+    )
+
+
+def _raw_case(
+    group: dict[str, Any],
+    templates: dict[str, dict[str, Any]],
+    mode: dict[str, Any],
+    *,
+    flow_kind: str,
+    destination: str,
+    stages: list[dict[str, Any]],
+    extra_missing: list[str] | None = None,
+) -> dict[str, Any]:
+    base_case_id = _raw_base_case_id(group)
+    template = templates.get(base_case_id) or templates.get("case23") or next(iter(templates.values()), {})
+    fields = dict(group["fields"])
+    missing = [field for field in REQUIRED_WORDING_FIELDS if not fields.get(field)]
+    reasons = list(extra_missing or [])
+    if missing:
+        reasons.append(
+            f"Missing wording fields {', '.join(missing)}: source={group['sourceSheet']}, "
+            f"code={group['wordingCode']}, locale={group['locale']}"
+        )
+    enabled = not reasons
+    expected = deepcopy(template.get("expected") or {})
+    ordered_keys = [key for key in EXPECTED_FIELD_ORDER if key in fields]
+    ordered_keys.extend(sorted(set(fields).difference(ordered_keys)))
+    expected["prompts"] = [fields[key] for key in ordered_keys]
+    expected["uiFields"] = {key: fields[key] for key in ordered_keys}
+    expected["stageUiFields"] = {
+        stage["type"]: dict(stage.get("expectedFields") or {})
+        for stage in stages
+    }
+
+    case = deepcopy(template)
+    case.update(
+        {
+            "id": _raw_case_id(flow_kind, destination, group),
+            "baseCaseId": base_case_id,
+            "functionPoint": (
+                f"{group['sourceSheet']} {group['messageCategory']} "
+                f"{group['wordingCode']} ({group['locale']})"
+            ),
+            "locale": group["locale"],
+            "browserLanguage": group["locale"].replace("_", "-"),
+            "wordingScenario": _raw_wording_scenario(group["wordingCode"]),
+            "wording": {
+                "issuerId": "default",
+                "issuerMode": mode["id"],
+                "sourceSheet": group["sourceSheet"],
+                "messageCategory": group["messageCategory"],
+                "code": group["wordingCode"],
+                "locale": group["locale"],
+            },
+            "flow": {
+                "kind": flow_kind,
+                "destination": destination,
+                "destinations": list(mode.get("destinations") or []),
+                "stages": stages,
+            },
+            "expected": expected,
+            "availability": {"enabled": enabled, "reason": "; ".join(reasons)},
+        }
+    )
+    return case
+
+
+def _raw_switch_case(
+    oob_group: dict[str, Any],
+    sms_group: dict[str, Any] | None,
+    templates: dict[str, dict[str, Any]],
+    mode: dict[str, Any],
+) -> dict[str, Any]:
+    missing = [] if sms_group else [
+        f"Missing SMS wording for category={oob_group['messageCategory']}, locale={oob_group['locale']}"
+    ]
+    case = _raw_case(
+        oob_group,
+        templates,
+        mode,
+        flow_kind="oob_switch_sms",
+        destination="sms",
+        stages=[_raw_stage("oob", oob_group), _raw_stage("sms", sms_group)],
+        extra_missing=missing,
+    )
+    case["flow"]["switchCreq"] = True
+    return case
+
+
+def _raw_stage(stage_type: str, group: dict[str, Any] | None) -> dict[str, Any]:
+    return {
+        "type": stage_type,
+        "sourceSheet": str(group.get("sourceSheet") or "") if group else "",
+        "messageCategory": str(group.get("messageCategory") or "") if group else "",
+        "wordingCode": str(group.get("wordingCode") or "") if group else "",
+        "locale": str(group.get("locale") or "") if group else "",
+        "expectedFields": dict(group.get("fields") or {}) if group else {},
+    }
+
+
+def _matching_group(
+    candidates: list[dict[str, Any]],
+    target: dict[str, Any],
+) -> dict[str, Any] | None:
+    for candidate in candidates:
+        if (
+            candidate["messageCategory"] == target["messageCategory"]
+            and candidate["locale"] == target["locale"]
+        ):
+            return candidate
+    return None
+
+
+def _raw_case_id(flow_kind: str, destination: str, group: dict[str, Any]) -> str:
+    if flow_kind == "selection_page":
+        prefix = "ui_single_select"
+    elif flow_kind == "selection_branch":
+        prefix = f"ui_select_{destination}"
+    elif flow_kind == "oob_switch_sms":
+        prefix = "ui_oob_switch_sms"
+    else:
+        prefix = f"ui_{destination}"
+    parts = (
+        prefix,
+        group["messageCategory"].lower(),
+        group["wordingCode"].lower(),
+        group["locale"],
+    )
+    return "_".join(_id_part(part) for part in parts if part)
+
+
+def _raw_base_case_id(group: dict[str, Any]) -> str:
+    code = group["wordingCode"]
+    if "INCORRECT" in code:
+        return "case31"
+    if "GAP" in code or "INTERVAL" in code:
+        return "case39"
+    if "LIMIT" in code:
+        return "case43"
+    if "RESEND" in code:
+        return "case35"
+    if "EXPIRED" in code:
+        return "case47"
+    return "case27" if group["messageCategory"] == "NPA" else "case23"
+
+
+def _raw_wording_scenario(wording_code: str) -> str:
+    code = wording_code.upper()
+    if "INCORRECT" in code:
+        return "incorrect_otp"
+    if "GAP" in code or "INTERVAL" in code:
+        return "resend_gap_limit"
+    if "LIMIT" in code:
+        return "resend_count_limit"
+    if "RESEND" in code:
+        return "resend_success"
+    if "EXPIRED" in code:
+        return "expired_otp"
+    return "initial_challenge"
+
+
+def _id_part(value: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9_]+", "_", value).strip("_")
+
+
+def _locale_sort_key(locale: str) -> tuple[int, str]:
+    try:
+        return DEFAULT_SUPPORTED_LOCALES.index(locale), locale
+    except ValueError:
+        return len(DEFAULT_SUPPORTED_LOCALES), locale
 
 
 def _wording_field_index(wordings: Iterable[dict[str, Any]]) -> dict[tuple[str, ...], dict[str, str]]:
