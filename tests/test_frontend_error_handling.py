@@ -93,6 +93,9 @@ def test_frontend_imports_wording_profiles_and_disables_unavailable_cases():
     assert ".wording-import-controls" in styles
     assert ".case-unavailable-reason" in styles
     assert 'issuerModeInput?.addEventListener("change", reloadCasesForIssuerMode)' in app_js
+    assert 'class="wide-setting"' in index_html
+    assert ".wide-setting" in styles
+    assert "grid-column: 1 / -1" in styles
 
 
 def test_sit_controls_use_execution_and_settings_sidebar():

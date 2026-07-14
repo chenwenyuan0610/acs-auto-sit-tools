@@ -13,11 +13,14 @@ Case IDs are not renumbered in the current committed state. Renumbering the acti
 | Area | Status |
 | --- | --- |
 | Active browser cases | 43 |
-| `direct_otp` implementation | 43 / 43 completed |
-| `selection_sms_otp` implementation | 43 / 43 completed |
-| `selection_sms_oob` implementation | Pending |
-| `direct_oob` implementation | Pending |
-| `default_oob_can_switch_otp` implementation | Pending |
+| `sms_otp` | Implemented; `direct_otp` remains a server-side compatibility alias |
+| `email_otp` | Implemented |
+| `direct_oob` | Implemented |
+| `selection_sms_oob` | Implemented with separate SMS and OOB branches |
+| `selection_sms_email` | Implemented with separate SMS and Email branches |
+| `selection_sms_email_oob` | Implemented with separate SMS, Email, and OOB branches |
+| `selection_email_oob` | Implemented with separate Email and OOB branches |
+| `default_oob_can_switch_otp` | Implemented as OOB -> switch CReq -> SMS OTP |
 
 ## Live Runner Coverage
 
@@ -40,14 +43,19 @@ The remaining active manual or slow cases are still skipped in live mode until t
 
 Cases from `case23` onward are UI wording and page-format validation cases. Issuer-specific wording import is now implemented. The default supported locales are `zh_TW`, `en_US`, and `zh_CN`.
 
-The workbook `outputs/challenge-ui-wording-work/acs_challenge_ui_wording_import.xlsx` is the supported import format. It contains:
+The settings page now auto-detects both supported workbook formats:
+
+- The normalized workbook `outputs/challenge-ui-wording-work/acs_challenge_ui_wording_import.xlsx`.
+- The original `challenge_ui_info.xlsx` workbook with `SMS`, `Email`, `OOB`, and `Single Select` source sheets.
+
+The normalized workbook contains:
 
 - Issuer settings and issuer mode defaults.
 - Normalized wording rows keyed by issuer, issuer mode, device channel, message category, code, language, and field key.
 - UI case mapping for `case23` onward.
 - Field dictionary and source sheet summary.
 
-The settings panel can import this workbook and stores the normalized runtime profile in `data/wording_profiles.json`. That generated file is local runtime data and is excluded from Git.
+The settings panel stores the normalized runtime profile in `data/wording_profiles.json`. That generated file is local runtime data and is excluded from Git. Import failures preserve the last valid profile.
 
 After import, the previous 28 language-specific cases (`case23` to `case50`) are represented by seven scenario templates and expanded for each supported issuer locale:
 
@@ -59,15 +67,28 @@ After import, the previous 28 language-specific cases (`case23` to `case50`) are
 - OTP resend count limit.
 - Expired OTP.
 
-The default profile therefore exposes 21 localized UI cases. Issuer-specific rows override shared default wording. A missing code/locale combination remains visible but cannot be selected or executed, and its reason is shown in the case list. Excel placeholders such as `{0}` and HTML line breaks are matched against dynamic challenge values instead of being compared literally.
+The normalized profile continues exposing 21 localized UI cases for backward compatibility. The original workbook generates cases by selected issuer mode, source sheet, message category, wording code, and locale. Issuer-specific rows override shared default wording. A missing code/locale combination remains visible but cannot be selected or executed, and its reason is shown in the case list. Excel placeholders such as `{0}` and HTML line breaks are matched against dynamic challenge values instead of being compared literally.
 
 Available APIs:
 
-- `GET /api/sit/wording-profiles`
+- `GET /api/sit/wording-profiles?issuerId=default&issuerMode=sms_otp`
 - `POST /api/sit/wording-profiles/import`
-- `GET /api/sit/browser-cases?issuerId=default&issuerMode=direct_otp`
+- `GET /api/sit/browser-cases?issuerId=default&issuerMode=sms_otp`
 
-Verification on 2026-07-14: the full automated suite passed with 106 tests. The bundled workbook imported as one issuer, three locales, and 1761 normalized wording rows.
+Verification on 2026-07-14: the full automated suite passed with 128 tests. The supplied `challenge_ui_info.xlsx` imported as one issuer, three locales, 228 source rows, and 1,752 normalized wording fields. Generated case counts were:
+
+| Issuer mode | Generated UI cases | Disabled |
+| --- | ---: | ---: |
+| `sms_otp` | 48 | 0 |
+| `email_otp` | 48 | 0 |
+| `direct_oob` | 12 | 0 |
+| `selection_sms_oob` | 66 | 0 |
+| `selection_sms_email` | 102 | 0 |
+| `selection_sms_email_oob` | 114 | 0 |
+| `selection_email_oob` | 66 | 0 |
+| `default_oob_can_switch_otp` | 12 | 0 |
+
+Playwright verification passed at 1440px desktop and 390px mobile widths with no horizontal overflow, console errors, or failed network responses. The local server is kept on `http://127.0.0.1:8000/`.
 
 ## OOB Planning
 

@@ -307,6 +307,10 @@ textarea.evidence {
   margin-bottom: 10px;
 }
 
+.wide-setting {
+  grid-column: 1 / -1;
+}
+
 .wording-import-controls {
   align-items: end;
   border-bottom: 1px solid var(--line);
