@@ -26,9 +26,11 @@ The original workbook is treated as the `default` issuer. The uploaded workbook 
 | --- | --- |
 | `sms_otp` | `SMS` |
 | `email_otp` | `Email` |
-| `selection_sms_otp` | `Single Select`, then `SMS` |
 | `direct_oob` | `OOB` |
-| `selection_sms_oob` | `Single Select`, then `OOB` |
+| `selection_sms_oob` | `Single Select`, then test both `SMS` and `OOB` destinations |
+| `selection_sms_email` | `Single Select`, then test both `SMS` and `Email` destinations |
+| `selection_sms_email_oob` | `Single Select`, then test `SMS`, `Email`, and `OOB` destinations |
+| `selection_email_oob` | `Single Select`, then test both `Email` and `OOB` destinations |
 | `default_oob_can_switch_otp` | Start with `OOB`, click the switch/send-code control, submit CReq, then validate the returned `SMS` OTP page |
 
 `3RI` is not included in this Challenge UI case generation scope.
@@ -69,10 +71,12 @@ produces one deterministic case. IDs use a stable readable form such as:
 
 Case names display the source, category, code, and locale. Expected output contains field-level UI values from the workbook. Supported languages are derived from the selected source sheets; the current default workbook produces `zh_TW`, `en_US`, and `zh_CN`.
 
-Selection modes include both stages:
+Selection modes include the selection page and every destination configured by that mode:
 
 1. A `Single Select` page case for each available category, code, and locale.
-2. The selected destination page cases from `SMS` or `OOB`.
+2. Separate branch cases that choose and validate each configured destination from `SMS`, `Email`, or `OOB`.
+
+The four supported selection combinations are SMS + OOB, SMS + Email, SMS + Email + OOB, and Email + OOB. A mode is incomplete when its `Single Select` wording does not expose every configured destination; its affected cases remain visible but disabled with the missing-option reason.
 
 `default_oob_can_switch_otp` produces compound switch-flow cases per category and locale. Each case validates the initial OOB fields, the switch control, the outgoing CReq transition, and the returned SMS OTP fields.
 
@@ -95,7 +99,7 @@ No manual format selector is added.
 Generated cases carry explicit metadata for source sheet, category, wording code, locale, and flow stages. Runtime behavior must use this metadata rather than parsing display names.
 
 - SMS and Email OTP cases use OTP submission and resend behavior appropriate to their wording code.
-- Single Select cases select the configured destination option before validating the destination page.
+- Single Select cases select each configured destination option in a separate run before validating that destination page.
 - OOB cases use the current OOB challenge path.
 - OOB-to-SMS cases issue the switch CReq and validate both captured pages.
 
@@ -112,7 +116,7 @@ Existing result output continues showing expected fields, actual visible text, r
 ## Testing
 
 - Parser tests cover raw-format detection, header mapping, languages, source sheet metadata, identical duplicate handling, and atomic failure behavior.
-- Mode tests cover SMS, Email, selection-to-SMS, direct OOB, selection-to-OOB, and OOB-to-SMS switch generation.
+- Mode tests cover SMS, Email, direct OOB, all four Single Select destination combinations, and OOB-to-SMS switch generation.
 - Alias tests prove `direct_otp` resolves to `sms_otp` while the catalog only exposes the new visible value.
 - API tests upload a raw workbook and verify generated IDs, source format, language list, and selected-mode case counts.
 - Frontend tests verify mode changes reload cases and import summaries display format, languages, and generated count.
