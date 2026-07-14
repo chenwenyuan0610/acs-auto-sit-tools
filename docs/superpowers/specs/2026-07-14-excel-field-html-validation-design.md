@@ -23,6 +23,17 @@ Each non-empty Excel wording field is one required text assertion. Before compar
 
 A generated case fails when any Excel field is absent. The result contains the original expected field values, captured visible text, and the missing field values so the existing UI can highlight differences in red.
 
+## Result Presentation
+
+The main comparison area shows only information needed to review the test:
+
+- overall status, issuer mode, locale, and `acsTransID`;
+- each Excel field name and expected wording;
+- whether the wording was found;
+- missing wording in red.
+
+The full challenge HTML and raw execution response remain available in a collapsed `技術細節` section. They are not rendered in the main expected or actual result columns.
+
 ## Language Mapping
 
 Generated cases continue to map workbook locales to AReq values:
@@ -43,4 +54,5 @@ Legacy cases may contain descriptive labels or dynamic transaction values and re
 - Unit-test HTML tags, entities, whitespace, and numbered placeholders.
 - Unit-test that fields ignored by legacy rules remain required for Excel validation.
 - Unit-test missing field reporting.
+- Unit-test that the main result summary omits full HTML and the collapsed technical details retain it.
 - Run the complete test suite before committing and pushing.

@@ -115,10 +115,18 @@ function actualResultForCase(result) {
   const details = result.details || {};
   const prompt = details.prompt
     ? {
-        visibleText: details.prompt.visibleText || [],
+        fields: promptFieldSummary(details.prompt),
         missing: details.prompt.missing || [],
       }
     : undefined;
+
+  if (prompt?.fields?.length) {
+    return {
+      status: statusLabel(result.status),
+      reason: result.reason || undefined,
+      wordingFields: prompt.fields,
+    };
+  }
   const transactions = Array.isArray(details.transactions)
     ? details.transactions.map((transaction) => ({
         label: transaction.label || `Transaction ${(transaction.index ?? 0) + 1}`,
@@ -141,6 +149,24 @@ function actualResultForCase(result) {
       error: details.errorMatch?.actual ?? details.error,
     }).filter(([, value]) => value !== undefined && value !== null)
   );
+}
+
+function promptFieldSummary(prompt) {
+  return (prompt?.fields || []).map((field) => ({
+    field: field.name,
+    status: field.found ? "找到" : "缺少",
+  }));
+}
+
+function expectedResultForCase(caseItem) {
+  const expected = caseItem?.expected || {};
+  if (expected.validationMode !== "excel_fields") {
+    return expected;
+  }
+  return {
+    locale: caseItem.locale,
+    wordingFields: expected.uiFields || {},
+  };
 }
 
 function differenceValue(value) {
@@ -475,7 +501,7 @@ function selectCase(caseId) {
     caseStepsListEl.appendChild(item);
   }
 
-  caseExpectedOutput.textContent = pretty(caseItem.expected || {});
+  caseExpectedOutput.textContent = pretty(expectedResultForCase(caseItem));
   caseActualOutput.textContent = pretty(actualResultForCase(result));
   renderResultDifferences(result);
   caseRunOutput.textContent = pretty(result || {

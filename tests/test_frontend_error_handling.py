@@ -189,3 +189,27 @@ def test_frontend_renders_actual_results_and_red_differences():
     assert ".difference-item" in styles
     assert "color: var(--danger)" in styles
     assert ".actual-result-output.has-differences" in styles
+
+
+def test_frontend_shows_compact_excel_field_results_and_collapsed_technical_details():
+    index_html = Path("static/index.html").read_text(encoding="utf-8")
+    app_js = Path("static/app.js").read_text(encoding="utf-8")
+
+    assert "function expectedResultForCase" in app_js
+    assert "function promptFieldSummary" in app_js
+    assert 'rawHtml' not in app_js[app_js.index("function actualResultForCase"):app_js.index("function differenceValue")]
+    assert '<details class="case-run-details">' in index_html
+    assert '<details class="case-run-details" open>' not in index_html
+    assert "技術細節" in index_html
+
+
+def test_case_status_does_not_wrap_on_mobile():
+    styles = Path("static/styles.css").read_text(encoding="utf-8")
+
+    case_status_rule = styles[styles.index(".case-status {"):styles.index(".case-status.running")]
+    assert "white-space: nowrap" in case_status_rule
+    assert "flex-shrink: 0" in case_status_rule
+    assert "@media (max-width: 600px)" in styles
+    mobile_rules = styles[styles.index("@media (max-width: 600px)"):]
+    assert ".detail-header" in mobile_rules
+    assert "flex-direction: column" in mobile_rules

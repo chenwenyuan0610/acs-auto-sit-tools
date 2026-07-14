@@ -15,7 +15,12 @@ from typing import Any
 from urllib.parse import parse_qs, unquote, urlsplit
 from uuid import uuid4
 
-from acs_auto_sit.challenge import b64url_json, decode_b64url_json, parse_challenge_page
+from acs_auto_sit.challenge import (
+    b64url_json,
+    decode_b64url_json,
+    parse_challenge_page,
+    visible_text_from_html,
+)
 from acs_auto_sit.client import post_form, post_payload
 from acs_auto_sit.case_plan import build_case_plan
 from acs_auto_sit.issuer_modes import (
@@ -968,8 +973,16 @@ def _run_prompt_case(
         if isinstance(run_result.get("http"), dict)
         else None
     )
-    expected_prompts = (case.get("expected", {}) or {}).get("prompts") or []
+    expected = case.get("expected", {}) or {}
+    expected_prompts = expected.get("prompts") or []
     visible_text = _visible_text_from_run_result(run_result)
+    raw_html = _raw_html_from_run_result(run_result)
+    excel_fields = expected.get("uiFields") or {}
+    field_results = (
+        _excel_field_results(excel_fields, visible_text)
+        if expected.get("validationMode") == "excel_fields"
+        else []
+    )
     if _is_acs_error(run_result.get("ares")):
         return {
             "caseId": case_id,
@@ -986,6 +999,8 @@ def _run_prompt_case(
                     "expected": expected_prompts,
                     "visibleText": visible_text,
                     "missing": expected_prompts,
+                    "fields": [{**field, "found": False} for field in field_results],
+                    "rawHtml": raw_html,
                 },
                 "ares": run_result.get("ares"),
                 "cres": None,
@@ -996,7 +1011,11 @@ def _run_prompt_case(
                 "error": run_result.get("error") or run_result.get("draftError"),
             },
         }
-    missing = _missing_prompt_text(expected_prompts, visible_text)
+    missing = (
+        [field["expected"] for field in field_results if not field["found"]]
+        if field_results
+        else _missing_prompt_text(expected_prompts, visible_text)
+    )
     passed = run_result.get("ok") is True and bool(visible_text) and not missing
     return {
         "caseId": case_id,
@@ -1021,6 +1040,8 @@ def _run_prompt_case(
                 "expected": expected_prompts,
                 "visibleText": visible_text,
                 "missing": missing,
+                "fields": field_results,
+                "rawHtml": raw_html,
             },
             "ares": run_result.get("ares"),
             "cres": None,
@@ -1113,6 +1134,33 @@ def _visible_text_from_run_result(run_result: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(visible_text))
 
 
+def _raw_html_from_run_result(run_result: dict[str, Any]) -> list[dict[str, str]]:
+    auto_creq = run_result.get("autoCreq")
+    if not isinstance(auto_creq, dict):
+        return []
+    pages = []
+    for stage, path in (
+        ("challenge", ("challenge",)),
+        ("smsSelection", ("smsSelection", "challenge")),
+        ("oobSubmission", ("oobSubmission", "challenge")),
+        ("otpSubmission", ("otpSubmission", "challenge")),
+        ("resendSubmission", ("resendSubmission", "challenge")),
+    ):
+        value: Any = auto_creq
+        for key in path:
+            value = value.get(key) if isinstance(value, dict) else None
+        raw_html = value.get("rawHtml") if isinstance(value, dict) else None
+        if isinstance(raw_html, str) and raw_html:
+            pages.append({"stage": stage, "html": raw_html})
+    for collection_name in ("otpSubmissions", "resendSubmissions"):
+        for index, submission in enumerate(auto_creq.get(collection_name) or []):
+            page = submission.get("challenge") if isinstance(submission, dict) else None
+            raw_html = page.get("rawHtml") if isinstance(page, dict) else None
+            if isinstance(raw_html, str) and raw_html:
+                pages.append({"stage": f"{collection_name}[{index}]", "html": raw_html})
+    return pages
+
+
 def _missing_prompt_text(expected_prompts: list[Any], visible_text: list[str]) -> list[str]:
     visible = "\n".join(visible_text)
     missing = []
@@ -1124,6 +1172,35 @@ def _missing_prompt_text(expected_prompts: list[Any], visible_text: list[str]) -
         if not _expected_prompt_matches(normalized, visible):
             missing.append(text)
     return missing
+
+
+def _excel_field_results(fields: dict[str, Any], visible_text: list[str]) -> list[dict[str, Any]]:
+    visible = " ".join(" ".join(str(item).split()) for item in visible_text)
+    results = []
+    for name, value in fields.items():
+        expected = str(value or "").strip()
+        if not expected:
+            continue
+        normalized = " ".join(visible_text_from_html(expected).split())
+        results.append(
+            {
+                "name": str(name),
+                "expected": expected,
+                "found": bool(normalized) and _excel_text_matches(normalized, visible),
+            }
+        )
+    return results
+
+
+def _excel_text_matches(expected: str, visible: str) -> bool:
+    parts = re.split(r"(\{\d+\})", expected)
+    pattern = []
+    for part in parts:
+        if re.fullmatch(r"\{\d+\}", part):
+            pattern.append(r".+?")
+            continue
+        pattern.append(r"\s+".join(re.escape(word) for word in part.split()))
+    return re.search("".join(pattern), visible, flags=re.DOTALL) is not None
 
 
 def _expected_prompt_matches(expected: str, visible: str) -> bool:

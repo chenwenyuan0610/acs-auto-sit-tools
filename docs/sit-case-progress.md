@@ -67,7 +67,9 @@ After import, the previous 28 language-specific cases (`case23` to `case50`) are
 - OTP resend count limit.
 - Expired OTP.
 
-The normalized profile continues exposing 21 localized UI cases for backward compatibility. The original workbook generates cases by selected issuer mode, source sheet, message category, wording code, and locale. Issuer-specific rows override shared default wording. A missing code/locale combination remains visible but cannot be selected or executed, and its reason is shown in the case list. Excel placeholders such as `{0}` and HTML line breaks are matched against dynamic challenge values instead of being compared literally.
+The normalized profile continues exposing 21 localized UI cases for backward compatibility. The original workbook generates cases by selected issuer mode, source sheet, message category, wording code, and locale. Issuer-specific rows override shared default wording. A missing code/locale combination remains visible but cannot be selected or executed, and its reason is shown in the case list.
+
+Every non-empty imported Excel wording field is now validated. Matching decodes HTML entities, removes tags, normalizes whitespace, and accepts dynamic numbered placeholders such as `{0}`. Generated locales are sent in AReq `browserLanguage` as `zh-TW`, `en-US`, or `zh-CN`. The main result comparison shows only field names, expected wording, and found/missing status; missing wording remains red. Full challenge HTML for each stage is retained only in the collapsed `技術細節` result.
 
 Available APIs:
 
@@ -75,7 +77,7 @@ Available APIs:
 - `POST /api/sit/wording-profiles/import`
 - `GET /api/sit/browser-cases?issuerId=default&issuerMode=sms_otp`
 
-Verification on 2026-07-14: the full automated suite passed with 128 tests. The supplied `challenge_ui_info.xlsx` imported as one issuer, three locales, 228 source rows, and 1,752 normalized wording fields. Generated case counts were:
+Verification on 2026-07-14: the full automated suite passed with 135 tests. The supplied `challenge_ui_info.xlsx` imported as one issuer, three locales, 228 source rows, and 1,752 normalized wording fields. Generated case counts were:
 
 | Issuer mode | Generated UI cases | Disabled |
 | --- | ---: | ---: |
@@ -88,7 +90,7 @@ Verification on 2026-07-14: the full automated suite passed with 128 tests. The 
 | `selection_email_oob` | 66 | 0 |
 | `default_oob_can_switch_otp` | 12 | 0 |
 
-Playwright verification passed at 1440px desktop and 390px mobile widths with no horizontal overflow, console errors, or failed network responses. The local server is kept on `http://127.0.0.1:8000/`.
+Playwright verification passed at 1440px desktop and 390px mobile widths with no horizontal overflow, console errors, or failed network responses. It also verified compact Excel field output, no `rawHtml` in the main comparison, and collapsed technical details. The local server is kept on `http://127.0.0.1:8000/`.
 
 ## OOB Planning
 

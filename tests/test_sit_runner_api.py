@@ -830,7 +830,12 @@ def test_live_runner_uses_generated_email_branch_destination(monkeypatch, tmp_pa
 
     assert calls[0]["preferredChallenge"] == "email"
     assert calls[0]["autoSelectSms"] is True
+    assert calls[0]["payload"]["browserLanguage"] == "en-US"
     assert result["details"]["casePlan"]["preferredChallenge"] == "email"
+    assert result["details"]["prompt"]["fields"] == [
+        {"name": "challenge_title", "expected": "Email verification", "found": True},
+        {"name": "challenge_message", "expected": "Enter Email OTP", "found": True},
+    ]
     assert result["status"] == "pass"
 
 
@@ -847,6 +852,78 @@ def test_missing_prompt_text_accepts_excel_placeholders_and_html_breaks():
     ]
 
     assert server_module._missing_prompt_text(expected, visible) == []
+
+
+def test_excel_field_results_validate_every_field_with_html_normalization():
+    fields = {
+        "challenge_message": (
+            "The code was sent to&nbsp;{0}.<br>"
+            "<strong>Merchant:</strong> {1}"
+        ),
+        "help_title": "Help &amp; Support",
+        "merchant_label": "Merchant: Demo Merchant",
+    }
+    visible = [
+        "The code was sent to ***123.",
+        "Merchant: Demo Merchant",
+        "Help & Support",
+    ]
+
+    results = server_module._excel_field_results(fields, visible)
+
+    assert results == [
+        {"name": "challenge_message", "expected": fields["challenge_message"], "found": True},
+        {"name": "help_title", "expected": fields["help_title"], "found": True},
+        {"name": "merchant_label", "expected": fields["merchant_label"], "found": True},
+    ]
+
+
+def test_excel_field_results_report_fields_legacy_matching_would_ignore():
+    fields = {
+        "help_content": "Help Content: Contact the issuer",
+        "merchant_label": "Merchant: Missing Merchant",
+    }
+
+    results = server_module._excel_field_results(fields, ["Other page content"])
+
+    assert [item["name"] for item in results if not item["found"]] == [
+        "help_content",
+        "merchant_label",
+    ]
+
+
+def test_raw_html_from_run_result_collects_each_challenge_stage():
+    run_result = {
+        "autoCreq": {
+            "challenge": {"rawHtml": "<html>selection</html>"},
+            "smsSelection": {"challenge": {"rawHtml": "<html>otp</html>"}},
+            "otpSubmission": {"challenge": {"rawHtml": "<html>complete</html>"}},
+        }
+    }
+
+    assert server_module._raw_html_from_run_result(run_result) == [
+        {"stage": "challenge", "html": "<html>selection</html>"},
+        {"stage": "smsSelection", "html": "<html>otp</html>"},
+        {"stage": "otpSubmission", "html": "<html>complete</html>"},
+    ]
+
+
+def test_generated_locales_are_sent_as_areq_browser_language():
+    base_transaction = {"payload": {"messageType": "AReq", "browserLanguage": "en-US"}}
+
+    for locale, browser_language in (
+        ("zh_TW", "zh-TW"),
+        ("en_US", "en-US"),
+        ("zh_CN", "zh-CN"),
+    ):
+        case = {
+            "id": f"case23_{locale}",
+            "baseCaseId": "case23",
+            "locale": locale,
+            "browserLanguage": browser_language,
+        }
+        transaction = server_module._transaction_for_case(case, base_transaction)
+        assert transaction["payload"]["browserLanguage"] == browser_language
 
 
 def test_transaction_for_case_applies_3ri_fields_and_invalid_card():

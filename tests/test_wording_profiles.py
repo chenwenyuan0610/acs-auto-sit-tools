@@ -360,6 +360,7 @@ def test_build_localized_cases_expands_seven_scenarios_for_default_locales():
         "SEND_SMS_OTP zh_TW",
         "SEND_SMS_OTP message zh_TW",
     ]
+    assert cases[0]["expected"]["validationMode"] == "excel_fields"
     assert cases[0]["availability"] == {"enabled": True, "reason": ""}
 
 
@@ -454,6 +455,7 @@ def test_build_raw_localized_cases_filters_direct_mode_source_sheet(
     assert {case["wording"]["sourceSheet"] for case in cases} == {source_sheet}
     assert {case["flow"]["destination"] for case in cases} == {destination}
     assert all(case["flow"]["kind"] == "direct" for case in cases)
+    assert all(case["expected"]["validationMode"] == "excel_fields" for case in cases)
     assert len({case["id"] for case in cases}) == len(cases)
 
 

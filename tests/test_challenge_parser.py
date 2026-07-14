@@ -55,3 +55,11 @@ def test_challenge_parser_detects_resend_code_button():
 
     assert page["type"] == "otp"
     assert page["availableActions"]["resendOtp"] is True
+
+
+def test_challenge_parser_retains_raw_html_for_technical_details():
+    raw_html = "<html><body><strong>Important wording</strong></body></html>"
+
+    page = parse_challenge_page(raw_html, "https://acs.example.test/challenge")
+
+    assert page["rawHtml"] == raw_html

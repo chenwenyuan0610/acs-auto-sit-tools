@@ -390,11 +390,13 @@ textarea.evidence {
   border-radius: 999px;
   color: var(--muted);
   display: inline-block;
+  flex-shrink: 0;
   font-size: 11px;
   font-weight: 800;
   padding: 5px 7px;
   text-align: center;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .case-status.running {
@@ -689,6 +691,16 @@ h2 {
     align-items: flex-start;
     gap: 12px;
     padding: 14px 16px;
+  }
+}
+
+@media (max-width: 600px) {
+  .detail-header {
+    flex-direction: column;
+  }
+
+  .detail-header .case-status {
+    align-self: flex-start;
   }
 }
 

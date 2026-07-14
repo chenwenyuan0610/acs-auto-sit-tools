@@ -100,6 +100,7 @@ def parse_challenge_page(html: str, source_url: str) -> dict[str, Any]:
     available_actions = _available_actions(fields, action_controls)
 
     return {
+        "rawHtml": html,
         "title": _title(html),
         "type": _page_type(radio_options, text_inputs, decoded_cres, available_actions),
         "formAction": urljoin(source_url, action),
@@ -112,6 +113,12 @@ def parse_challenge_page(html: str, source_url: str) -> dict[str, Any]:
         "cres": decoded_cres,
         "visibleText": parser.text_chunks[:80],
     }
+
+
+def visible_text_from_html(value: str) -> str:
+    parser = ChallengeHtmlParser()
+    parser.feed(str(value or ""))
+    return " ".join(parser.text_chunks)
 
 
 def _page_type(

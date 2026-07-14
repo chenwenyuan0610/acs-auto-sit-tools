@@ -233,6 +233,7 @@ def build_localized_wording_cases(
             expected = deepcopy(templates[base_case_id].get("expected") or {})
             expected["prompts"] = [fields[key] for key in EXPECTED_FIELD_ORDER if key in fields]
             expected["uiFields"] = {key: fields[key] for key in EXPECTED_FIELD_ORDER if key in fields}
+            expected["validationMode"] = "excel_fields"
 
             case = deepcopy(templates[base_case_id])
             case.update(
@@ -404,6 +405,7 @@ def _raw_case(
     ordered_keys.extend(sorted(set(fields).difference(ordered_keys)))
     expected["prompts"] = [fields[key] for key in ordered_keys]
     expected["uiFields"] = {key: fields[key] for key in ordered_keys}
+    expected["validationMode"] = "excel_fields"
     expected["stageUiFields"] = {
         stage["type"]: dict(stage.get("expectedFields") or {})
         for stage in stages
