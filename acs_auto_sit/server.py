@@ -1713,47 +1713,64 @@ def _advance_challenge_response(
 
     if page["type"] == "otp" and auto_submit_otp and otp_attempts:
         current_page = page
+        completed = False
         for purpose in otp_attempts:
-            acs_trans_id = str((current_page.get("fields") or {}).get("acsTransID") or previous_creq.get("acsTransID") or "")
-            otp_value, otp_lookup = _resolve_otp_submission_value(
-                purpose,
-                acs_trans_id,
-                otp_settings,
-                timeout_seconds,
+            max_attempts = (
+                2
+                if purpose == "success" and otp_settings.source_mode == "acs_generated"
+                else 1
             )
-            otp_response = _submit_challenge_form(
-                current_page,
-                {"challengeValue": otp_value},
-                timeout_seconds,
-            )
-            submission = {
-                "simulatedOtpUsed": otp_lookup.get("source") in {
-                    "configured",
-                    "simulated",
-                    "simulated_fallback",
-                },
-                "otpSourceMode": otp_settings.source_mode,
-                "otpPurpose": purpose,
-                "otpLength": len(otp_value),
-                "otpLookup": otp_lookup,
-                **otp_response,
-            }
-            response["otpSubmission"] = submission
-            response["otpSubmissions"].append(submission)
-            if otp_response.get("cres"):
-                _apply_final_challenge_response(
-                    response,
-                    "otpSubmission",
-                    otp_response,
-                    previous_creq,
-                    notification_url,
+            for attempt in range(max_attempts):
+                if attempt > 0:
+                    time.sleep(1.0)
+                acs_trans_id = str(
+                    (current_page.get("fields") or {}).get("acsTransID")
+                    or previous_creq.get("acsTransID")
+                    or ""
+                )
+                otp_value, otp_lookup = _resolve_otp_submission_value(
+                    purpose,
+                    acs_trans_id,
+                    otp_settings,
                     timeout_seconds,
                 )
+                otp_response = _submit_challenge_form(
+                    current_page,
+                    {"challengeValue": otp_value},
+                    timeout_seconds,
+                )
+                submission = {
+                    "simulatedOtpUsed": otp_lookup.get("source") in {
+                        "configured",
+                        "simulated",
+                        "simulated_fallback",
+                    },
+                    "otpSourceMode": otp_settings.source_mode,
+                    "otpPurpose": purpose,
+                    "otpLength": len(otp_value),
+                    "otpLookup": otp_lookup,
+                    **otp_response,
+                }
+                response["otpSubmission"] = submission
+                response["otpSubmissions"].append(submission)
+                if otp_response.get("cres"):
+                    _apply_final_challenge_response(
+                        response,
+                        "otpSubmission",
+                        otp_response,
+                        previous_creq,
+                        notification_url,
+                        timeout_seconds,
+                    )
+                    completed = True
+                    break
+                next_page = otp_response.get("challenge")
+                if not next_page or next_page.get("type") != "otp":
+                    completed = True
+                    break
+                current_page = next_page
+            if completed:
                 break
-            next_page = otp_response.get("challenge")
-            if not next_page or next_page.get("type") != "otp":
-                break
-            current_page = next_page
 
 
 def _resend_until_limit(

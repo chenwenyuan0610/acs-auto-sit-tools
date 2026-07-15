@@ -350,6 +350,105 @@ def test_authentication_mode_selection_uses_option_labels(preferred_challenge, e
     assert selected == expected_value
 
 
+def test_acs_generated_success_otp_retries_once_when_first_submission_stays_on_otp_page(monkeypatch):
+    page = {
+        "type": "otp",
+        "fields": {"acsTransID": "acs-trans-1"},
+    }
+    response = {"otpSubmission": None, "otpSubmissions": []}
+    lookups = []
+    submissions = []
+    sleeps = []
+
+    def resolve_otp(purpose, acs_trans_id, settings, timeout_seconds):
+        lookups.append((purpose, acs_trans_id))
+        return f"12345{len(lookups)}", {"source": "lookup_api"}
+
+    def submit(current_page, overrides, timeout_seconds):
+        submissions.append(overrides["challengeValue"])
+        if len(submissions) == 1:
+            return {"challenge": page, "cres": None, "ok": True, "error": None, "http": {}}
+        return {
+            "challenge": {"type": "cres", "fields": {}},
+            "cres": {"messageType": "CRes", "transStatus": "Y"},
+            "ok": True,
+            "error": None,
+            "http": {},
+        }
+
+    monkeypatch.setattr(server_module, "_resolve_otp_submission_value", resolve_otp)
+    monkeypatch.setattr(server_module, "_submit_challenge_form", submit)
+    monkeypatch.setattr(server_module.time, "sleep", sleeps.append)
+
+    server_module._advance_challenge_response(
+        response,
+        page,
+        {"acsTransID": "acs-trans-1", "messageVersion": "2.2.0"},
+        30,
+        True,
+        "",
+        ["success"],
+        server_module.OtpSettings(source_mode="acs_generated"),
+        "",
+        {"id": "sms_otp"},
+        "auto",
+    )
+
+    assert lookups == [("success", "acs-trans-1"), ("success", "acs-trans-1")]
+    assert submissions == ["123451", "123452"]
+    assert sleeps == [1.0]
+    assert len(response["otpSubmissions"]) == 2
+    assert response["otpSubmission"] is response["otpSubmissions"][-1]
+    assert response["cres"]["transStatus"] == "Y"
+
+
+@pytest.mark.parametrize(
+    ("source_mode", "purpose"),
+    (("customer_generated", "success"), ("acs_generated", "failure")),
+)
+def test_otp_submission_does_not_retry_outside_acs_generated_success(monkeypatch, source_mode, purpose):
+    page = {
+        "type": "otp",
+        "fields": {"acsTransID": "acs-trans-1"},
+    }
+    response = {"otpSubmission": None, "otpSubmissions": []}
+    lookups = []
+    submissions = []
+    sleeps = []
+
+    def resolve_otp(otp_purpose, acs_trans_id, settings, timeout_seconds):
+        lookups.append((otp_purpose, acs_trans_id))
+        return "123456", {"source": "configured"}
+
+    def submit(current_page, overrides, timeout_seconds):
+        submissions.append(overrides["challengeValue"])
+        return {"challenge": page, "cres": None, "ok": True, "error": None, "http": {}}
+
+    monkeypatch.setattr(server_module, "_resolve_otp_submission_value", resolve_otp)
+    monkeypatch.setattr(server_module, "_submit_challenge_form", submit)
+    monkeypatch.setattr(server_module.time, "sleep", sleeps.append)
+
+    server_module._advance_challenge_response(
+        response,
+        page,
+        {"acsTransID": "acs-trans-1", "messageVersion": "2.2.0"},
+        30,
+        True,
+        "",
+        [purpose],
+        server_module.OtpSettings(source_mode=source_mode),
+        "",
+        {"id": "sms_otp"},
+        "auto",
+    )
+
+    assert lookups == [(purpose, "acs-trans-1")]
+    assert submissions == ["123456"]
+    assert sleeps == []
+    assert len(response["otpSubmissions"]) == 1
+    assert response.get("cres") is None
+
+
 def test_visible_text_includes_page_returned_after_oob_switch():
     visible_text = server_module._visible_text_from_run_result(
         {
