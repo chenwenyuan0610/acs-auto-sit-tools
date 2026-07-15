@@ -152,13 +152,22 @@ def test_sit_run_api_live_mode_skips_unsupported_case_without_network():
 
 def test_live_runner_runs_case02_failure_then_success_otp_flow(monkeypatch):
     calls = []
+    auto_creq = {
+        "challenge": {"type": "authentication_mode"},
+        "smsSelection": {"challenge": {"type": "otp"}},
+        "otpSubmissions": [
+            {"otpPurpose": "success", "challenge": {"type": "otp"}},
+            {"otpPurpose": "success", "cres": {"transStatus": "Y"}},
+        ],
+        "cres": {"transStatus": "Y"},
+    }
 
     def fake_run_areq_flow(envelope, notification_url):
         calls.append(envelope)
         return {
             "ok": True,
             "ares": {"transStatus": "C"},
-            "autoCreq": {"cres": {"transStatus": "Y"}},
+            "autoCreq": auto_creq,
             "http": {"request_body": envelope["payload"]},
         }
 
@@ -180,6 +189,7 @@ def test_live_runner_runs_case02_failure_then_success_otp_flow(monkeypatch):
     assert len(calls) == 2
     assert results[0]["caseId"] == "case01"
     assert results[0]["status"] == "pass"
+    assert results[0]["details"]["challengeFlow"] == auto_creq
     assert results[1]["caseId"] == "case02"
     assert results[1]["status"] == "pass"
     assert calls[1]["otpAttempts"] == ["failure", "success"]

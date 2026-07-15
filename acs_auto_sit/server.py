@@ -723,6 +723,7 @@ def _run_live_sit_cases(
                     "caseAreq": case_areq,
                     "ares": run_result.get("ares"),
                     "cres": cres,
+                    "challengeFlow": run_result.get("autoCreq"),
                     "notification": _notification_from_auto_creq(run_result.get("autoCreq")),
                     "http": {
                         "areq": run_result.get("http"),
