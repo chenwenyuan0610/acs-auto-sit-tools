@@ -4,6 +4,14 @@ from typing import Any
 
 
 CHALLENGE_VALUES = {"sms": "1", "email": "2", "oob": "3"}
+GENERATED_SCENARIOS = {
+    "initial_challenge",
+    "incorrect_otp",
+    "resend_success",
+    "resend_gap_limit",
+    "resend_count_limit",
+    "expired_otp",
+}
 
 
 def build_case_plan(case: dict[str, Any], issuer_mode: dict[str, Any]) -> dict[str, Any]:
@@ -15,6 +23,9 @@ def build_case_plan(case: dict[str, Any], issuer_mode: dict[str, Any]) -> dict[s
 
     kind = str(flow.get("kind") or "")
     destination = str(flow.get("destination") or "")
+    if "wordingScenario" in case:
+        return _build_generated_case_plan(case, issuer_mode)
+
     if kind == "selection_page":
         actions = [
             {"type": "send_areq"},
@@ -66,6 +77,154 @@ def build_case_plan(case: dict[str, Any], issuer_mode: dict[str, Any]) -> dict[s
         destination or str(issuer_mode.get("defaultPreferredChallenge") or "auto"),
         auto_select=kind == "selection_branch",
     )
+
+
+def _generated_destination_actions(destination: str, scenario: str) -> list[dict[str, Any]] | None:
+    if destination == "oob":
+        if scenario != "initial_challenge":
+            return None
+        return [
+            {"type": "assert_oob_page"},
+            {"type": "assert_stage_ui", "stage": "oob"},
+        ]
+
+    actions: list[dict[str, Any]] = [
+        {"type": "assert_otp_page"},
+    ]
+    if scenario == "incorrect_otp":
+        actions.append({"type": "submit_otp", "otpPurpose": "failure"})
+    elif scenario == "resend_success":
+        actions.append({"type": "resend_otp", "delayMode": "configured"})
+    elif scenario == "resend_gap_limit":
+        actions.append({"type": "resend_otp", "delaySeconds": 0})
+    elif scenario == "resend_count_limit":
+        actions.append({"type": "resend_until_limit"})
+    elif scenario == "expired_otp":
+        actions.extend(
+            [
+                {"type": "wait_otp_expiry"},
+                {"type": "submit_otp", "otpPurpose": "expired"},
+            ]
+        )
+    elif scenario != "initial_challenge":
+        return None
+    actions.append({"type": "assert_stage_ui", "stage": destination})
+    return actions
+
+
+def _generated_plan(
+    case: dict[str, Any],
+    issuer_mode: dict[str, Any],
+    actions: list[dict[str, Any]],
+    preferred_challenge: str,
+    *,
+    auto_select: bool,
+    coverage: str = "implemented",
+    pending_reason: str | None = None,
+) -> dict[str, Any]:
+    plan = {
+        "caseId": case.get("id", ""),
+        "mode": str(issuer_mode.get("id") or ""),
+        "coverage": coverage,
+        "classification": "generated",
+        "preferredChallenge": preferred_challenge,
+        "autoSelectAuthenticationMode": auto_select,
+        "actions": actions,
+    }
+    if pending_reason:
+        plan["pendingReason"] = pending_reason
+    return plan
+
+
+def _build_generated_case_plan(
+    case: dict[str, Any], issuer_mode: dict[str, Any]
+) -> dict[str, Any]:
+    flow = case.get("flow") or {}
+    kind = str(flow.get("kind") or "")
+    destination = str(flow.get("destination") or "")
+    scenario = str(case.get("wordingScenario") or "")
+    selection_actions = [
+        {"type": "send_areq"},
+        {"type": "assert_authentication_mode_page"},
+        {"type": "assert_stage_ui", "stage": "single_select"},
+    ]
+
+    def pending(reason: str, actions: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        return _generated_plan(
+            case,
+            issuer_mode,
+            actions or [{"type": "send_areq"}],
+            destination or str(issuer_mode.get("defaultPreferredChallenge") or "auto"),
+            auto_select=False,
+            coverage="pending",
+            pending_reason=reason,
+        )
+
+    if scenario not in GENERATED_SCENARIOS:
+        return pending(f"Unsupported generated wording scenario: {scenario or '<missing>'}")
+
+    if kind == "selection_page":
+        return _generated_plan(
+            case,
+            issuer_mode,
+            selection_actions,
+            "auto",
+            auto_select=False,
+        )
+
+    if kind == "selection_branch":
+        destination_actions = _generated_destination_actions(destination, scenario)
+        if destination not in CHALLENGE_VALUES or destination_actions is None:
+            return pending(
+                f"Unsupported generated selection destination/scenario: {destination}/{scenario}",
+                selection_actions,
+            )
+        actions = [
+            *selection_actions,
+            {
+                "type": "choose_authentication_mode",
+                "preferredChallenge": destination,
+                "challengeValue": CHALLENGE_VALUES[destination],
+                "label": destination.upper(),
+            },
+            *destination_actions,
+        ]
+        return _generated_plan(case, issuer_mode, actions, destination, auto_select=True)
+
+    if kind == "direct":
+        destination_actions = _generated_destination_actions(destination, scenario)
+        if destination not in CHALLENGE_VALUES or destination_actions is None:
+            return pending(
+                f"Unsupported generated direct destination/scenario: {destination}/{scenario}"
+            )
+        return _generated_plan(
+            case,
+            issuer_mode,
+            [{"type": "send_areq"}, *destination_actions],
+            destination,
+            auto_select=False,
+        )
+
+    if kind == "oob_switch_sms":
+        destination_actions = _generated_destination_actions("sms", scenario)
+        if destination != "sms" or destination_actions is None:
+            return pending(
+                f"Unsupported generated OOB switch destination/scenario: {destination}/{scenario}"
+            )
+        return _generated_plan(
+            case,
+            issuer_mode,
+            [
+                {"type": "send_areq"},
+                {"type": "assert_oob_page"},
+                {"type": "switch_to_otp"},
+                *destination_actions,
+            ],
+            "sms",
+            auto_select=False,
+        )
+
+    return pending(f"Unsupported generated flow kind: {kind or '<missing>'}")
 
 
 def _flow_plan(

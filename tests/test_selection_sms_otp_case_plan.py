@@ -5,6 +5,197 @@ from acs_auto_sit.issuer_modes import resolve_issuer_mode
 from acs_auto_sit.sit_runner import load_browser_case_catalog
 
 
+def _generated_case(locale, scenario, destination="sms", kind="selection_branch"):
+    return {
+        "id": f"ui_{destination}_{scenario}_{locale}",
+        "browserLanguage": locale.replace("_", "-"),
+        "wordingScenario": scenario,
+        "expected": {
+            "stageUiFields": {
+                "single_select": {"challenge_title": f"select-{locale}"},
+                destination: {"challenge_title": f"challenge-{locale}"},
+            }
+        },
+        "flow": {
+            "kind": kind,
+            "destination": destination,
+            "stages": [{"type": "single_select"}, {"type": destination}],
+        },
+    }
+
+
+@pytest.mark.parametrize(
+    ("scenario", "expected_types"),
+    (
+        (
+            "initial_challenge",
+            [
+                "send_areq",
+                "assert_authentication_mode_page",
+                "assert_stage_ui",
+                "choose_authentication_mode",
+                "assert_otp_page",
+                "assert_stage_ui",
+            ],
+        ),
+        (
+            "incorrect_otp",
+            [
+                "send_areq",
+                "assert_authentication_mode_page",
+                "assert_stage_ui",
+                "choose_authentication_mode",
+                "assert_otp_page",
+                "submit_otp",
+                "assert_stage_ui",
+            ],
+        ),
+        (
+            "resend_success",
+            [
+                "send_areq",
+                "assert_authentication_mode_page",
+                "assert_stage_ui",
+                "choose_authentication_mode",
+                "assert_otp_page",
+                "resend_otp",
+                "assert_stage_ui",
+            ],
+        ),
+        (
+            "resend_gap_limit",
+            [
+                "send_areq",
+                "assert_authentication_mode_page",
+                "assert_stage_ui",
+                "choose_authentication_mode",
+                "assert_otp_page",
+                "resend_otp",
+                "assert_stage_ui",
+            ],
+        ),
+        (
+            "resend_count_limit",
+            [
+                "send_areq",
+                "assert_authentication_mode_page",
+                "assert_stage_ui",
+                "choose_authentication_mode",
+                "assert_otp_page",
+                "resend_until_limit",
+                "assert_stage_ui",
+            ],
+        ),
+        (
+            "expired_otp",
+            [
+                "send_areq",
+                "assert_authentication_mode_page",
+                "assert_stage_ui",
+                "choose_authentication_mode",
+                "assert_otp_page",
+                "wait_otp_expiry",
+                "submit_otp",
+                "assert_stage_ui",
+            ],
+        ),
+    ),
+)
+def test_generated_action_registry_maps_scenario_to_reusable_actions(scenario, expected_types):
+    plan = build_case_plan(
+        _generated_case("en_US", scenario),
+        resolve_issuer_mode("selection_sms_email"),
+    )
+
+    assert plan["coverage"] == "implemented"
+    assert plan["classification"] == "generated"
+    assert [action["type"] for action in plan["actions"]] == expected_types
+
+
+def test_generated_action_plan_does_not_change_with_locale():
+    english = build_case_plan(_generated_case("en_US", "incorrect_otp"), resolve_issuer_mode("selection_sms_email"))
+    chinese = build_case_plan(_generated_case("zh_CN", "incorrect_otp"), resolve_issuer_mode("selection_sms_email"))
+
+    assert english["actions"] == chinese["actions"]
+
+
+def test_generated_selection_page_stops_after_single_select_assertion():
+    plan = build_case_plan(
+        _generated_case("en_US", "initial_challenge", kind="selection_page"),
+        resolve_issuer_mode("selection_sms_email"),
+    )
+
+    assert [action["type"] for action in plan["actions"]] == [
+        "send_areq",
+        "assert_authentication_mode_page",
+        "assert_stage_ui",
+    ]
+    assert plan["autoSelectAuthenticationMode"] is False
+
+
+def test_generated_direct_plan_runs_destination_actions_without_selection():
+    plan = build_case_plan(
+        _generated_case("en_US", "initial_challenge", kind="direct"),
+        resolve_issuer_mode("sms_otp"),
+    )
+
+    assert [action["type"] for action in plan["actions"]] == [
+        "send_areq",
+        "assert_otp_page",
+        "assert_stage_ui",
+    ]
+    assert plan["autoSelectAuthenticationMode"] is False
+
+
+def test_generated_oob_switch_plan_asserts_oob_then_sms_stage():
+    plan = build_case_plan(
+        _generated_case("en_US", "initial_challenge", kind="oob_switch_sms"),
+        resolve_issuer_mode("default_oob_can_switch_otp"),
+    )
+
+    assert [action["type"] for action in plan["actions"]] == [
+        "send_areq",
+        "assert_oob_page",
+        "switch_to_otp",
+        "assert_otp_page",
+        "assert_stage_ui",
+    ]
+    assert plan["preferredChallenge"] == "sms"
+
+
+@pytest.mark.parametrize(
+    ("destination", "challenge_value", "label"),
+    (("email", "2", "EMAIL"), ("oob", "3", "OOB")),
+)
+def test_generated_selection_branch_uses_destination_challenge_value(destination, challenge_value, label):
+    plan = build_case_plan(
+        _generated_case("en_US", "initial_challenge", destination=destination),
+        resolve_issuer_mode("selection_sms_email"),
+    )
+
+    selection = next(action for action in plan["actions"] if action["type"] == "choose_authentication_mode")
+
+    assert selection["challengeValue"] == challenge_value
+    assert selection["label"] == label
+
+
+def test_generated_unknown_scenario_is_pending_without_mutation_actions():
+    plan = build_case_plan(
+        _generated_case("en_US", "unknown_scenario"),
+        resolve_issuer_mode("selection_sms_email"),
+    )
+
+    assert plan["coverage"] == "pending"
+    assert "unknown_scenario" in plan["pendingReason"]
+    assert not {
+        "choose_authentication_mode",
+        "submit_otp",
+        "resend_otp",
+        "resend_until_limit",
+        "wait_otp_expiry",
+    }.intersection(action["type"] for action in plan["actions"])
+
+
 def test_selection_sms_otp_case_plan_covers_every_browser_case():
     catalog = load_browser_case_catalog()
 
