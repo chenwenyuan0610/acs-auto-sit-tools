@@ -77,7 +77,11 @@ Available APIs:
 - `POST /api/sit/wording-profiles/import`
 - `GET /api/sit/browser-cases?issuerId=default&issuerMode=sms_otp`
 
-Verification on 2026-07-14: the full automated suite passed with 135 tests. The supplied `challenge_ui_info.xlsx` imported as one issuer, three locales, 228 source rows, and 1,752 normalized wording fields. Generated case counts were:
+Verification on 2026-07-16: the full automated suite passed with 159 tests. Generated UI case implementation status is now derived from reusable action capability instead of legacy `baseCaseId` progress. Normalized generated cases without `flow` metadata are classified as pending and skipped before legacy live-runner fallback, so an unsupported generated case cannot be reported as implemented.
+
+Stage-aware Excel wording validation is shared across generated actions and the legacy result comparison. It validates only the fields assigned to the current challenge stage, supports runtime placeholders, excludes `script`, `style`, `template`, and `noscript` content from visible text, and keeps the legacy `_excel_field_results()` response shape compatible.
+
+The supplied `challenge_ui_info.xlsx` imported as one issuer, three locales, 228 source rows, and 1,752 normalized wording fields. Generated case counts were:
 
 | Issuer mode | Generated UI cases | Disabled |
 | --- | ---: | ---: |
