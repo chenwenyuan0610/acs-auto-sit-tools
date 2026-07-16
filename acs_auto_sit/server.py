@@ -41,6 +41,7 @@ from acs_auto_sit.three_ds import (
     extract_acs_values,
     requires_challenge,
 )
+from acs_auto_sit.ui_validation import stage_page, validate_stage_fields
 from acs_auto_sit.transaction_result_provider import simulated_transaction_result_for_acs_trans_id
 from acs_auto_sit.wording_profiles import (
     DEFAULT_SUPPORTED_LOCALES,
@@ -1183,21 +1184,10 @@ def _missing_prompt_text(expected_prompts: list[Any], visible_text: list[str]) -
 
 
 def _excel_field_results(fields: dict[str, Any], visible_text: list[str]) -> list[dict[str, Any]]:
-    visible = " ".join(" ".join(str(item).split()) for item in visible_text)
-    results = []
-    for name, value in fields.items():
-        expected = str(value or "").strip()
-        if not expected:
-            continue
-        normalized = " ".join(visible_text_from_html(expected).split())
-        results.append(
-            {
-                "name": str(name),
-                "expected": expected,
-                "found": bool(normalized) and _excel_text_matches(normalized, visible),
-            }
-        )
-    return results
+    return [
+        {key: value for key, value in result.items() if key not in {"stage", "status"}}
+        for result in validate_stage_fields("combined", fields, {"visibleText": visible_text})
+    ]
 
 
 def _excel_text_matches(expected: str, visible: str) -> bool:

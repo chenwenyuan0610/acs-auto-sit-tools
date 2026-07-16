@@ -35,28 +35,46 @@ class ChallengeHtmlParser(html.parser.HTMLParser):
         self.text_chunks: list[str] = []
         self._label: dict[str, Any] | None = None
         self._button: dict[str, str] | None = None
+        self._ignored_depth = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         data = {key: value or "" for key, value in attrs}
+        if self._ignored_depth:
+            if tag in {"script", "style", "template", "noscript"}:
+                self._ignored_depth += 1
+            return
+        if tag in {"script", "style", "template", "noscript"}:
+            self._ignored_depth = 1
+            return
         if tag == "form":
             self.forms.append(data)
         elif tag == "input":
             self.inputs.append(data)
+            self._append_attribute_text(tag, data)
         elif tag == "button":
+            self._append_attribute_text(tag, data)
             data["text"] = ""
             self.buttons.append(data)
             self._button = data
         elif tag == "label":
             self._label = {"attrs": data, "text": ""}
             self.labels.append(self._label)
+        else:
+            self._append_attribute_text(tag, data)
 
     def handle_endtag(self, tag: str) -> None:
+        if self._ignored_depth:
+            if tag in {"script", "style", "template", "noscript"}:
+                self._ignored_depth -= 1
+            return
         if tag == "label":
             self._label = None
         elif tag == "button":
             self._button = None
 
     def handle_data(self, data: str) -> None:
+        if self._ignored_depth:
+            return
         text = " ".join(data.split())
         if not text:
             return
@@ -65,6 +83,17 @@ class ChallengeHtmlParser(html.parser.HTMLParser):
             self._label["text"] += text
         if self._button is not None:
             self._button["text"] += text
+
+    def _append_attribute_text(self, tag: str, attrs: dict[str, str]) -> None:
+        texts: list[str] = []
+        input_type = attrs.get("type", "").lower()
+        if tag == "input" and input_type in {"text", "password", "tel", "number", "submit", "button"}:
+            texts.extend([attrs.get("placeholder", ""), attrs.get("value", "")])
+        texts.extend([attrs.get("aria-label", ""), attrs.get("title", ""), attrs.get("alt", "")])
+        for value in texts:
+            text = " ".join(str(value).split())
+            if text:
+                self.text_chunks.append(text)
 
 
 def parse_challenge_page(html: str, source_url: str) -> dict[str, Any]:

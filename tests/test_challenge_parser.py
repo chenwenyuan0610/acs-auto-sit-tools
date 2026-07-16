@@ -63,3 +63,67 @@ def test_challenge_parser_retains_raw_html_for_technical_details():
     page = parse_challenge_page(raw_html, "https://acs.example.test/challenge")
 
     assert page["rawHtml"] == raw_html
+
+
+def test_challenge_parser_collects_visible_wording_from_common_attributes():
+    page = parse_challenge_page(
+        """
+        <html><body>
+          <form action="/select" method="POST">
+            <h1>Challenge Methods Selection</h1>
+            <p>Please select Challenge Methods</p>
+            <input type="radio" id="sms" name="challengeValue" value="1">
+            <label for="sms">SMS OTP</label>
+            <input type="submit" name="nextStep" value="Next">
+            <button type="button" aria-label="Want Help ?"></button>
+            <div title="For further questions, please call the phone number on the back of your credit card."></div>
+          </form>
+        </body></html>
+        """,
+        "https://acs.example.test/challenge",
+    )
+
+    assert page["visibleText"] == [
+        "Challenge Methods Selection",
+        "Please select Challenge Methods",
+        "SMS OTP",
+        "Next",
+        "Want Help ?",
+        "For further questions, please call the phone number on the back of your credit card.",
+    ]
+
+
+def test_challenge_parser_ignores_script_style_template_and_noscript_text():
+    page = parse_challenge_page(
+        """
+        <html><body>
+          <style>hidden-style-copy</style>
+          <script>hidden-script-copy</script>
+          <template>hidden-template-copy</template>
+          <noscript>hidden-noscript-copy</noscript>
+          <form action="/select" method="POST">
+            <div aria-label="Visible aria label"></div>
+            <input type="text" placeholder="Visible placeholder">
+          </form>
+        </body></html>
+        """,
+        "https://acs.example.test/challenge",
+    )
+
+    assert "hidden-style-copy" not in page["visibleText"]
+    assert "hidden-script-copy" not in page["visibleText"]
+    assert "hidden-template-copy" not in page["visibleText"]
+    assert "hidden-noscript-copy" not in page["visibleText"]
+    assert "Visible aria label" in page["visibleText"]
+    assert "Visible placeholder" in page["visibleText"]
+
+
+def test_challenge_parser_excludes_non_visible_container_text():
+    page = parse_challenge_page(
+        "<html><style>hidden-style-copy</style><script>hidden-script-copy</script>"
+        "<template>hidden-template-copy</template><noscript>hidden-noscript-copy</noscript>"
+        "<body><p>Visible title</p></body></html>",
+        "https://acs.example.test/challenge",
+    )
+
+    assert page["visibleText"] == ["Visible title"]
