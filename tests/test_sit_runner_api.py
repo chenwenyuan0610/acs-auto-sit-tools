@@ -1,12 +1,16 @@
 import json
+from copy import deepcopy
 from http.server import ThreadingHTTPServer
 from threading import Thread
 from urllib import request
+
+import pytest
 
 import acs_auto_sit.server as server_module
 from acs_auto_sit.client import PostResult
 from acs_auto_sit.issuer_modes import issuer_mode_catalog, resolve_issuer_mode
 from acs_auto_sit.server import create_server
+from acs_auto_sit.wording_profiles import build_localized_wording_cases
 
 
 def test_browser_cases_api_returns_case_list():
@@ -771,17 +775,178 @@ def test_generated_wording_case_uses_locale_and_base_case_metadata():
     assert server_module.live_skip_reason(generated_case, resolve_issuer_mode("sms_otp")) is None
 
 
-def test_live_runner_classifies_pending_generated_case_without_running_areq(monkeypatch):
-    case = {
-        "id": "ui_unknown",
-        "baseCaseId": "case23",
-        "wordingScenario": "unknown",
-        "wording": {"code": "UNKNOWN"},
-        "flow": {"kind": "selection_branch", "destination": "sms", "stages": []},
-        "automation": {"status": "automatable"},
-        "availability": {"enabled": True, "reason": ""},
-        "expected": {},
+def _normalized_generated_case_for_live_runner() -> dict:
+    profiles = {
+        "sourceFormat": "normalized",
+        "defaultSupportedLocales": ["zh_TW", "en_US", "zh_CN"],
+        "issuers": {
+            "default": {
+                "id": "default",
+                "supportedLocales": ["zh_TW"],
+            }
+        },
+        "wordings": [
+            {
+                "issuerId": "default",
+                "issuerMode": "selection_sms_email_oob",
+                "deviceChannel": "BROWSER",
+                "messageCategory": "PA",
+                "sourceSheet": "SMS",
+                "wordingCode": "SEND_SMS_OTP",
+                "locale": "zh_TW",
+                "fieldKey": "challenge_title",
+                "content": "交易驗證",
+            },
+            {
+                "issuerId": "default",
+                "issuerMode": "selection_sms_email_oob",
+                "deviceChannel": "BROWSER",
+                "messageCategory": "PA",
+                "sourceSheet": "SMS",
+                "wordingCode": "SEND_SMS_OTP",
+                "locale": "zh_TW",
+                "fieldKey": "challenge_message",
+                "content": "請輸入驗證碼",
+            },
+            {
+                "issuerId": "default",
+                "issuerMode": "selection_sms_email_oob",
+                "deviceChannel": "BROWSER",
+                "messageCategory": "PA",
+                "sourceSheet": "SMS",
+                "wordingCode": "INCORRECT_SMS_OTP",
+                "locale": "zh_TW",
+                "fieldKey": "challenge_title",
+                "content": "交易驗證",
+            },
+            {
+                "issuerId": "default",
+                "issuerMode": "selection_sms_email_oob",
+                "deviceChannel": "BROWSER",
+                "messageCategory": "PA",
+                "sourceSheet": "SMS",
+                "wordingCode": "INCORRECT_SMS_OTP",
+                "locale": "zh_TW",
+                "fieldKey": "challenge_message",
+                "content": "驗證碼錯誤",
+            },
+            {
+                "issuerId": "default",
+                "issuerMode": "selection_sms_email_oob",
+                "deviceChannel": "BROWSER",
+                "messageCategory": "PA",
+                "sourceSheet": "SMS",
+                "wordingCode": "RESEND_SMS_OTP",
+                "locale": "zh_TW",
+                "fieldKey": "challenge_title",
+                "content": "交易驗證",
+            },
+            {
+                "issuerId": "default",
+                "issuerMode": "selection_sms_email_oob",
+                "deviceChannel": "BROWSER",
+                "messageCategory": "PA",
+                "sourceSheet": "SMS",
+                "wordingCode": "RESEND_SMS_OTP",
+                "locale": "zh_TW",
+                "fieldKey": "challenge_message",
+                "content": "重新發送驗證碼",
+            },
+            {
+                "issuerId": "default",
+                "issuerMode": "selection_sms_email_oob",
+                "deviceChannel": "BROWSER",
+                "messageCategory": "PA",
+                "sourceSheet": "SMS",
+                "wordingCode": "RESEND_SMS_GAP_LIMIT",
+                "locale": "zh_TW",
+                "fieldKey": "challenge_title",
+                "content": "交易驗證",
+            },
+            {
+                "issuerId": "default",
+                "issuerMode": "selection_sms_email_oob",
+                "deviceChannel": "BROWSER",
+                "messageCategory": "PA",
+                "sourceSheet": "SMS",
+                "wordingCode": "RESEND_SMS_GAP_LIMIT",
+                "locale": "zh_TW",
+                "fieldKey": "challenge_message",
+                "content": "請稍後再試",
+            },
+            {
+                "issuerId": "default",
+                "issuerMode": "selection_sms_email_oob",
+                "deviceChannel": "BROWSER",
+                "messageCategory": "PA",
+                "sourceSheet": "SMS",
+                "wordingCode": "RESEND_SMS_LIMIT_EXCEED",
+                "locale": "zh_TW",
+                "fieldKey": "challenge_title",
+                "content": "交易驗證",
+            },
+            {
+                "issuerId": "default",
+                "issuerMode": "selection_sms_email_oob",
+                "deviceChannel": "BROWSER",
+                "messageCategory": "PA",
+                "sourceSheet": "SMS",
+                "wordingCode": "RESEND_SMS_LIMIT_EXCEED",
+                "locale": "zh_TW",
+                "fieldKey": "challenge_message",
+                "content": "已達重送上限",
+            },
+            {
+                "issuerId": "default",
+                "issuerMode": "selection_sms_email_oob",
+                "deviceChannel": "BROWSER",
+                "messageCategory": "PA",
+                "sourceSheet": "SMS",
+                "wordingCode": "SMS_PASSCODE_EXPIRED",
+                "locale": "zh_TW",
+                "fieldKey": "challenge_title",
+                "content": "交易驗證",
+            },
+            {
+                "issuerId": "default",
+                "issuerMode": "selection_sms_email_oob",
+                "deviceChannel": "BROWSER",
+                "messageCategory": "PA",
+                "sourceSheet": "SMS",
+                "wordingCode": "SMS_PASSCODE_EXPIRED",
+                "locale": "zh_TW",
+                "fieldKey": "challenge_message",
+                "content": "驗證碼已過期",
+            },
+        ],
     }
+    source_cases = [
+        {
+            "id": case_id,
+            "expected": {"prompts": ["legacy"]},
+            "automation": {"status": "automatable", "tags": ["otp", "pa"]},
+        }
+        for case_id in ("case23", "case27", "case31", "case35", "case39", "case43", "case47")
+    ]
+
+    case = next(
+        item
+        for item in build_localized_wording_cases(
+            profiles,
+            source_cases,
+            issuer_mode="selection_sms_email_oob",
+        )
+        if item["id"] == "case31_zh_TW"
+    )
+    pending = deepcopy(case)
+    pending["id"] = "case31_unknown_zh_TW"
+    pending["wordingScenario"] = "unknown"
+    pending["wording"] = {**pending["wording"], "code": "UNKNOWN"}
+    return pending
+
+
+def test_live_runner_classifies_pending_generated_case_without_running_areq(monkeypatch):
+    case = _normalized_generated_case_for_live_runner()
     monkeypatch.setattr(server_module, "browser_cases_by_id", lambda **kwargs: {case["id"]: case})
     monkeypatch.setattr(
         server_module,

@@ -123,7 +123,7 @@ def load_browser_case_catalog(
             **case,
             "caseImplementation": (
                 generated_case_implementation(case, resolved_issuer_mode)
-                if "flow" in case and "wording" in case
+                if _is_generated_case(case)
                 else progress_by_id.get(case["id"], {})
             ),
         }
@@ -201,7 +201,7 @@ def live_skip_reason(
     if availability.get("enabled") is False:
         return str(availability.get("reason") or "Case wording is not configured.")
 
-    if "flow" in case and "wording" in case:
+    if _is_generated_case(case):
         plan = build_case_plan(case, issuer_mode or resolve_issuer_mode(None))
         if plan.get("coverage") != "implemented":
             pending_reason = str(plan.get("pendingReason") or "Generated UI flow is not implemented.")
@@ -229,6 +229,10 @@ def live_skip_reason(
     if "otp" not in tags or "challenge" not in tags:
         return "Live runner currently supports only OTP challenge cases."
     return None
+
+
+def _is_generated_case(case: dict[str, Any]) -> bool:
+    return "wordingScenario" in case
 
 
 def _case_summary(case: dict[str, Any]) -> dict[str, Any]:

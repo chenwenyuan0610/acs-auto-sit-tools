@@ -518,7 +518,6 @@ def test_browser_catalog_replaces_legacy_localized_cases_when_profile_exists(tmp
         issuer_mode="direct_otp",
     )
     case_ids = [case["id"] for case in catalog["cases"]]
-
     assert "case20" in case_ids
     assert "case23" not in case_ids
     assert "case23_zh_TW" in case_ids

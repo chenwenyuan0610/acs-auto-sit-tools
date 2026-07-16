@@ -102,6 +102,49 @@ def test_pending_generated_case_is_skipped_before_base_case_fallback():
     assert "not implemented" in reason.lower()
 
 
+def test_normalized_generated_case_without_flow_uses_generated_implementation(monkeypatch, tmp_path):
+    generated_case = {
+        "id": "case23_zh_TW",
+        "baseCaseId": "case23",
+        "wordingScenario": "initial_challenge",
+        "wording": {"code": "SEND_SMS_OTP"},
+        "availability": {"enabled": True, "reason": ""},
+    }
+    monkeypatch.setattr(
+        "acs_auto_sit.sit_runner.build_localized_wording_cases",
+        lambda *args, **kwargs: [generated_case],
+    )
+    monkeypatch.setattr(
+        "acs_auto_sit.sit_runner.load_wording_profiles",
+        lambda path: {"issuers": {"default": {"id": "default", "supportedLocales": ["zh_TW"]}}},
+    )
+
+    catalog = load_browser_case_catalog(
+        progress_path=tmp_path / "missing-progress.json",
+        wording_profiles_path=tmp_path / "wording_profiles.json",
+    )
+
+    generated = next(case for case in catalog["cases"] if case["id"] == "case23_zh_TW")
+    implementation = generated["caseImplementation"]
+    assert implementation["status"] == "pending"
+    assert "unsupported generated flow" in implementation["note"].lower()
+
+
+def test_normalized_generated_case_without_flow_is_skipped_live():
+    case = {
+        "id": "case23_zh_TW",
+        "baseCaseId": "case23",
+        "wordingScenario": "initial_challenge",
+        "wording": {"code": "SEND_SMS_OTP"},
+        "availability": {"enabled": True, "reason": ""},
+    }
+
+    reason = live_skip_reason(case, resolve_issuer_mode("sms_otp"))
+
+    assert reason is not None
+    assert "not implemented" in reason.lower()
+
+
 def test_browser_case_catalog_uses_progress_file(tmp_path):
     progress_path = tmp_path / "progress.json"
     progress_path.write_text(

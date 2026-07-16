@@ -16,6 +16,8 @@ GENERATED_SCENARIOS = {
 
 def build_case_plan(case: dict[str, Any], issuer_mode: dict[str, Any]) -> dict[str, Any]:
     flow = case.get("flow") or {}
+    if "wordingScenario" in case:
+        return _build_generated_case_plan(case, issuer_mode)
     if not flow:
         if str(issuer_mode.get("id") or "").startswith("selection_"):
             return build_selection_sms_otp_case_plan(case)
@@ -23,9 +25,6 @@ def build_case_plan(case: dict[str, Any], issuer_mode: dict[str, Any]) -> dict[s
 
     kind = str(flow.get("kind") or "")
     destination = str(flow.get("destination") or "")
-    if "wordingScenario" in case:
-        return _build_generated_case_plan(case, issuer_mode)
-
     if kind == "selection_page":
         actions = [
             {"type": "send_areq"},
