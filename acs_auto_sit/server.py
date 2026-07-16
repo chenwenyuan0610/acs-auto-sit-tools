@@ -42,6 +42,7 @@ from acs_auto_sit.three_ds import (
     requires_challenge,
 )
 from acs_auto_sit.ui_validation import stage_page, validate_stage_fields
+from acs_auto_sit.ui_action_runner import ActionContext, execute_generated_actions
 from acs_auto_sit.transaction_result_provider import simulated_transaction_result_for_acs_trans_id
 from acs_auto_sit.wording_profiles import (
     DEFAULT_SUPPORTED_LOCALES,
@@ -503,6 +504,9 @@ def _run_areq_flow(envelope: dict[str, Any], notification_url: str) -> dict[str,
                     resend_max_attempts=int(envelope.get("resendMaxAttempts") or 10),
                     challenge_headers=_challenge_headers_for_payload(payload),
                     resend_delay_seconds=_read_resend_delay_seconds(envelope),
+                    generated_actions=list(envelope.get("generatedActions") or []),
+                    stage_ui_fields=dict(envelope.get("stageUiFields") or {}),
+                    expiry_wait_seconds=float(envelope.get("otpExpiryWaitSeconds") or 0),
                 )
         except ValueError as exc:
             draft_error = str(exc)
@@ -540,6 +544,7 @@ def _run_live_sit_cases(
     )
     results: list[dict[str, Any]] = []
     case_delay_seconds = _read_case_delay_seconds(transaction)
+    include_slow_cases, expiry_wait_seconds = _read_slow_case_settings(transaction)
 
     for index, case_id in enumerate(case_ids):
         if index > 0 and case_delay_seconds > 0:
@@ -559,13 +564,36 @@ def _run_live_sit_cases(
             continue
 
         case_transaction = _transaction_for_case(case, transaction)
-        skip_reason = live_skip_reason(case, issuer_mode)
         case_plan = _case_plan_for_issuer_mode(case, issuer_mode)
         effective_preferred_challenge = _preferred_challenge_for_case_plan(
             case_plan,
             preferred_challenge,
         )
         case_areq = _case_areq_record(case_id, case_transaction)
+        is_slow_generated = any(
+            action.get("type") == "wait_otp_expiry"
+            for action in (case_plan or {}).get("actions", [])
+        )
+        if is_slow_generated and not include_slow_cases:
+            results.append(
+                {
+                    "caseId": case_id,
+                    "status": "skipped",
+                    "classification": "skipped_slow",
+                    "reason": "Slow OTP expiration case is disabled by default.",
+                    "case": case,
+                    "details": {
+                        "expected": case.get("expected", {}),
+                        "issuerMode": issuer_mode,
+                        "preferredChallenge": effective_preferred_challenge,
+                        "casePlan": case_plan,
+                        "caseAreq": case_areq,
+                    },
+                }
+            )
+            continue
+
+        skip_reason = live_skip_reason(case, issuer_mode)
         if skip_reason:
             classification = "unsupported"
             if (
@@ -599,6 +627,7 @@ def _run_live_sit_cases(
             "simulatedOtp": str(case_transaction.get("simulatedOtp") or "123456"),
             "issuerMode": issuer_mode["id"],
             "preferredChallenge": effective_preferred_challenge,
+            "otpExpiryWaitSeconds": expiry_wait_seconds,
         }
         if case_plan:
             envelope["otpAttempts"] = [
@@ -618,6 +647,11 @@ def _run_live_sit_cases(
                 envelope["challengeAction"] = "resend_limit"
                 envelope["resendMaxAttempts"] = 10
                 envelope["autoSubmitOtp"] = False
+            if case_plan.get("classification") == "generated":
+                envelope["generatedActions"] = list(case_plan.get("actions") or [])
+                envelope["stageUiFields"] = dict(
+                    ((case.get("expected") or {}).get("stageUiFields") or {})
+                )
 
         if (case.get("expected", {}) or {}).get("transactions"):
             results.append(
@@ -789,14 +823,63 @@ def _ares_only_result(
             "ares": actual_ares,
             "cres": None,
             "aresMismatches": mismatches,
-            "http": {
-                "areq": run_result.get("http"),
-            },
+            "http": {"areq": run_result.get("http")},
             "error": run_result.get("error") or run_result.get("draftError"),
         },
     }
 
 
+def _generated_ui_result(
+    case_id: str,
+    case: dict[str, Any],
+    case_plan: dict[str, Any],
+    case_areq: dict[str, Any],
+    run_result: dict[str, Any],
+    issuer_mode: dict[str, Any],
+    preferred_challenge: str,
+) -> dict[str, Any]:
+    auto_creq = run_result.get("autoCreq") if isinstance(run_result.get("autoCreq"), dict) else {}
+    classification = str(auto_creq.get("classification") or "acs_error")
+    if _is_acs_error(run_result.get("ares")):
+        classification = "acs_error"
+    status = {
+        "passed": "pass",
+        "assertion_failed": "fail",
+        "acs_error": "fail",
+        "not_implemented": "skipped",
+        "skipped_slow": "skipped",
+    }.get(classification, "fail")
+    field_results = [
+        field
+        for action in auto_creq.get("actionResults") or []
+        for field in action.get("fieldResults") or []
+    ]
+    failed_action = auto_creq.get("failedAction")
+    reason = {
+        "passed": "Generated UI actions completed.",
+        "not_implemented": "Generated UI action is not implemented.",
+        "skipped_slow": "Slow generated UI case was skipped.",
+        "acs_error": _acs_error_reason(run_result.get("ares")),
+    }.get(classification, str((failed_action or {}).get("reason") or "Generated UI action failed."))
+    return {
+        "caseId": case_id,
+        "status": status,
+        "classification": classification,
+        "reason": reason,
+        "case": case,
+        "details": {
+            "expected": case.get("expected", {}),
+            "issuerMode": issuer_mode,
+            "preferredChallenge": preferred_challenge,
+            "casePlan": case_plan,
+            "caseAreq": case_areq,
+            "comparison": {"fields": field_results},
+            "ares": run_result.get("ares"),
+            "cres": auto_creq.get("cres"),
+            "challengeFlow": auto_creq,
+            "error": run_result.get("error") or run_result.get("draftError"),
+        },
+    }
 def _run_error_case(
     case_id: str,
     case: dict[str, Any],
@@ -982,6 +1065,22 @@ def _run_prompt_case(
         if isinstance(run_result.get("http"), dict)
         else None
     )
+    auto_creq = run_result.get("autoCreq")
+    if (
+        case_plan
+        and case_plan.get("classification") == "generated"
+        and isinstance(auto_creq, dict)
+        and auto_creq.get("classification")
+    ):
+        return _generated_ui_result(
+            case_id,
+            case,
+            case_plan,
+            case_areq,
+            run_result,
+            issuer_mode,
+            preferred_challenge,
+        )
     expected = case.get("expected", {}) or {}
     expected_prompts = expected.get("prompts") or []
     visible_text = _visible_text_from_run_result(run_result)
@@ -1504,6 +1603,10 @@ def _post_creq(
     resend_max_attempts: int = 10,
     challenge_headers: dict[str, str] | None = None,
     resend_delay_seconds: float = 0,
+    *,
+    generated_actions: list[dict[str, Any]] | None = None,
+    stage_ui_fields: dict[str, dict[str, Any]] | None = None,
+    expiry_wait_seconds: float = 0,
 ) -> dict[str, Any]:
     issuer_mode = issuer_mode or resolve_issuer_mode("")
     preferred_challenge = resolve_preferred_challenge(preferred_challenge)
@@ -1532,6 +1635,49 @@ def _post_creq(
     response["notification"] = _post_final_notification(page, cres, notification_url, timeout_seconds)
     response["issuerMode"] = issuer_mode
     response["preferredChallenge"] = preferred_challenge
+
+    if generated_actions:
+        def submit_form(
+            current_page: dict[str, Any], overrides: dict[str, str]
+        ) -> dict[str, Any]:
+            return _submit_challenge_form(current_page, overrides, timeout_seconds)
+
+        def resolve_otp(
+            purpose: str, current_page: dict[str, Any]
+        ) -> tuple[str, dict[str, Any]]:
+            acs_trans_id = str(
+                (current_page.get("fields") or {}).get("acsTransID")
+                or creq.get("acsTransID")
+                or ""
+            )
+            return _resolve_otp_submission_value(
+                purpose,
+                acs_trans_id,
+                otp_settings,
+                timeout_seconds,
+            )
+
+        outcome = execute_generated_actions(
+            ActionContext(
+                page=page,
+                stage_fields=stage_ui_fields or {},
+                submit_form=submit_form,
+                resolve_otp=resolve_otp,
+                sleep=time.sleep,
+                resend_delay_seconds=resend_delay_seconds,
+                resend_max_attempts=resend_max_attempts,
+                expiry_wait_seconds=expiry_wait_seconds,
+            ),
+            generated_actions,
+        )
+        response.update(outcome)
+        response["notification"] = _post_final_notification(
+            outcome.get("challenge"),
+            outcome.get("cres"),
+            notification_url,
+            timeout_seconds,
+        )
+        return response
 
     if page and page["type"] == "authentication_mode" and auto_select_sms:
         selected_value = _authentication_mode_value(page, issuer_mode, preferred_challenge)
@@ -2044,6 +2190,20 @@ def _read_resend_delay_seconds(envelope: dict[str, Any]) -> float:
     except (TypeError, ValueError):
         delay = 0.0
     return max(0.0, delay)
+
+
+def _read_slow_case_settings(envelope: dict[str, Any]) -> tuple[bool, float]:
+    include = bool(envelope.get("includeSlowCases", False))
+    raw_wait = envelope.get("otpExpiryWaitSeconds", 300)
+    try:
+        wait_seconds = float(raw_wait)
+    except (TypeError, ValueError) as exc:
+        if include:
+            raise ValueError("otpExpiryWaitSeconds must be a positive number.") from exc
+        wait_seconds = 300.0
+    if include and wait_seconds <= 0:
+        raise ValueError("otpExpiryWaitSeconds must be a positive number.")
+    return include, wait_seconds
 
 
 def _radio_label(page: dict[str, Any], name: str, value: str) -> str:

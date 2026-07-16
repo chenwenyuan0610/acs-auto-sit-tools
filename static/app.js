@@ -38,6 +38,8 @@ const validCardNumberInput = document.querySelector("#validCardNumber");
 const invalidCardNumberInput = document.querySelector("#invalidCardNumber");
 const otpFailureMaxAttemptsInput = document.querySelector("#otpFailureMaxAttempts");
 const caseDelaySecondsInput = document.querySelector("#caseDelaySeconds");
+const includeSlowCasesInput = document.querySelector("#includeSlowCases");
+const otpExpiryWaitSecondsInput = document.querySelector("#otpExpiryWaitSeconds");
 const sitRunSummaryEl = document.querySelector("#sitRunSummary");
 const caseTitleEl = document.querySelector("#caseTitle");
 const caseSubtitleEl = document.querySelector("#caseSubtitle");
@@ -371,8 +373,16 @@ function readCommonEnvelope(url, payload) {
     invalidCardNumber: invalidCardNumberInput?.value || "",
     otpFailureMaxAttempts: Number(otpFailureMaxAttemptsInput?.value || 5),
     caseDelaySeconds: Number(caseDelaySecondsInput?.value || 0),
+    includeSlowCases: Boolean(includeSlowCasesInput?.checked),
+    otpExpiryWaitSeconds: Number(otpExpiryWaitSecondsInput?.value || 300),
   };
 }
+
+includeSlowCasesInput?.addEventListener("change", () => {
+  if (otpExpiryWaitSecondsInput) {
+    otpExpiryWaitSecondsInput.disabled = !includeSlowCasesInput.checked;
+  }
+});
 
 function setActiveTab(tabId) {
   tabButtons.forEach((button) => {

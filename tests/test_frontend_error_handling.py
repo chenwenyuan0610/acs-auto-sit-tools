@@ -51,6 +51,8 @@ def test_frontend_has_sit_runner_tab_and_controls():
     assert 'id="invalidCardNumber"' in index_html
     assert 'id="otpFailureMaxAttempts"' in index_html
     assert 'id="caseDelaySeconds"' in index_html
+    assert 'id="includeSlowCases"' in index_html
+    assert 'id="otpExpiryWaitSeconds"' in index_html
     assert 'id="sitRunSummary"' in index_html
     assert "/api/sit/browser-cases" in app_js
     assert "/api/sit/issuer-modes" in app_js
@@ -67,6 +69,9 @@ def test_frontend_has_sit_runner_tab_and_controls():
     assert "invalidCardNumber:" in app_js
     assert "otpFailureMaxAttempts:" in app_js
     assert "caseDelaySeconds:" in app_js
+    assert "includeSlowCases:" in app_js
+    assert "otpExpiryWaitSeconds:" in app_js
+    assert 'includeSlowCasesInput?.addEventListener("change"' in app_js
     assert "renderSitRunSummary" in app_js
 
 

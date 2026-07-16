@@ -96,6 +96,33 @@ The supplied `challenge_ui_info.xlsx` imported as one issuer, three locales, 228
 
 Playwright verification passed at 1440px desktop and 390px mobile widths with no horizontal overflow, console errors, or failed network responses. It also verified compact Excel field output, no `rawHtml` in the main comparison, and collapsed technical details. The local server is kept on `http://127.0.0.1:8000/`.
 
+## Reusable Generated UI Action Runner
+
+The generated runner now executes locale-independent semantic actions for:
+
+- Authentication-method page assertions and SMS, Email, or OOB selection.
+- OTP page assertions and success, failure, or expired OTP submission.
+- Single resend, resend gap-limit, and resend-until-limit scenarios.
+- Direct OOB assertions, OOB continuation, and OOB-to-SMS switching.
+- Stage-aware Excel field validation after every relevant page transition.
+
+Action execution records ordered `actionResults`, a deterministic `classification`, and the first `failedAction`. Generated results distinguish UI assertion failures, ACS errors, unsupported actions, and intentionally skipped slow cases. Legacy procedural CReq execution remains unchanged for non-generated cases.
+
+OTP expiration cases are disabled by default. Live SIT requests can opt in with:
+
+```json
+{
+  "includeSlowCases": true,
+  "otpExpiryWaitSeconds": 300
+}
+```
+
+When slow cases are disabled, plans containing `wait_otp_expiry` return `skipped_slow` before any AReq is sent. When enabled, `otpExpiryWaitSeconds` must be a positive number. The settings sidebar exposes the same opt-in and keeps the wait input disabled until selected.
+
+Verification on 2026-07-16: the complete automated suite passed with 181 tests. This includes executor coverage for selection, SMS, Email, resend, OOB, OOB-to-SMS, slow-case gating, frontend controls, and generated catalog capability contracts.
+
+Runtime verification imported the repository's normalized workbook successfully: one issuer, three locales, 2,529 wording fields, and 21 generated cases. That normalized artifact does not contain raw `flow` metadata, so those cases correctly remain pending and were not submitted to the live generated action runner. A sanitized generated live-run requires the original `challenge_ui_info.xlsx` raw workbook plus an available ACS test endpoint and card configuration.
+
 ## OOB Planning
 
 The first OOB Browser active set is planned separately from the OTP catalog. The current recommendation is to keep OOB cases in a separate catalog, using IDs such as `oob01` through `oob13`, instead of mixing them into the existing OTP `caseXX` list.

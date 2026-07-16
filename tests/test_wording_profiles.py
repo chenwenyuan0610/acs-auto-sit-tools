@@ -588,3 +588,23 @@ def test_browser_catalog_derives_generated_capability_status(monkeypatch, tmp_pa
 
     assert implementations["ui_supported"]["status"] == "completed"
     assert implementations["ui_pending"]["status"] == "pending"
+
+
+def test_available_raw_generated_cases_have_deterministic_action_capability(tmp_path):
+    profile_path = tmp_path / "raw-wording-profiles.json"
+    import_wording_workbook(_raw_workbook_bytes(), profile_path)
+
+    catalog = load_browser_case_catalog(
+        progress_path=tmp_path / "missing-progress.json",
+        wording_profiles_path=profile_path,
+        issuer_mode="sms_otp",
+    )
+
+    generated = [
+        case
+        for case in catalog["cases"]
+        if case.get("wording") and case.get("availability", {}).get("enabled")
+    ]
+    assert generated
+    assert all(case["caseImplementation"]["status"] == "completed" for case in generated)
+    assert all(case["caseImplementation"]["actionCount"] > 0 for case in generated)

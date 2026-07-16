@@ -1051,6 +1051,40 @@ def test_live_runner_uses_generated_email_branch_destination(monkeypatch, tmp_pa
     assert result["status"] == "pass"
 
 
+@pytest.mark.parametrize("value", [0, -1, "nope"])
+def test_slow_case_wait_must_be_positive_when_enabled(value):
+    with pytest.raises(ValueError, match="positive number"):
+        server_module._read_slow_case_settings(
+            {"includeSlowCases": True, "otpExpiryWaitSeconds": value}
+        )
+
+
+def test_generated_expired_case_is_skipped_before_network(monkeypatch):
+    case = {
+        "id": "ui_expired",
+        "wordingScenario": "expired_otp",
+        "flow": {"kind": "direct", "destination": "sms"},
+        "expected": {"prompts": ["expired"], "stageUiFields": {"sms": {}}},
+        "automation": {},
+        "caseImplementation": {"status": "completed"},
+    }
+    monkeypatch.setattr(server_module, "browser_cases_by_id", lambda **kwargs: {"ui_expired": case})
+    calls = []
+    monkeypatch.setattr(server_module, "_run_areq_flow", lambda *args: calls.append(args))
+
+    result = server_module._run_live_sit_cases(
+        ["ui_expired"],
+        {"url": "http://not-used", "payload": {}, "headers": {}},
+        "http://notification",
+        resolve_issuer_mode("sms_otp"),
+        "auto",
+    )[0]
+
+    assert result["status"] == "skipped"
+    assert result["classification"] == "skipped_slow"
+    assert calls == []
+
+
 def test_missing_prompt_text_accepts_excel_placeholders_and_html_breaks():
     expected = [
         "The verification code has been sent via SMS to {0}.<br><br>"
