@@ -20,7 +20,7 @@ Complete the pending Excel-generated browser UI cases without duplicating flow l
 Each generated case has three independent inputs:
 
 1. `flow`: the navigation shape, such as `selection_page`, `selection_branch`, `direct`, or `oob_switch_sms`.
-2. `wordingScenario`: the semantic behavior, such as `send_otp`, `incorrect_otp`, `resend_otp`, `resend_gap_limit`, `resend_limit_exceed`, or `otp_expired`.
+2. `wordingScenario`: the semantic behavior, such as `initial_challenge`, `incorrect_otp`, `resend_success`, `resend_gap_limit`, `resend_count_limit`, or `expired_otp`.
 3. Locale data: `browserLanguage` and each stage's `expectedFields` from Excel.
 
 Flow and scenario determine behavior. Locale data never selects runner behavior.
@@ -90,8 +90,8 @@ SMS and Email use the same OTP actions. Destination changes the selected authent
 - `incorrect_otp`: submit the configured failure OTP and validate the returned OTP error page.
 - `resend_otp`: request a resend and validate the returned resend wording.
 - `resend_gap_limit`: resend without the configured interval and validate the gap warning.
-- `resend_limit_exceed`: resend until the configured limit and validate the limit page.
-- `otp_expired`: wait for the configured expiration and submit or inspect the expired challenge as required by the ACS response.
+- `resend_count_limit`: resend until the configured limit and validate the limit page.
+- `expired_otp`: wait for the configured expiration and submit or inspect the expired challenge as required by the ACS response.
 
 ACS-generated successful OTP retains the existing one-second, one-retry behavior when the first submission remains on the OTP page.
 
@@ -101,7 +101,7 @@ OOB actions validate the OOB page without reusing OTP submission behavior. Initi
 
 ## Slow Cases
 
-`otp_expired` plans contain `wait_otp_expiry`, but normal full runs do not execute them. The SIT run request accepts:
+`expired_otp` plans contain `wait_otp_expiry`, but normal full runs do not execute them. The SIT run request accepts:
 
 - `includeSlowCases`: boolean, default `false`.
 - `otpExpiryWaitSeconds`: configurable positive number used only when slow cases are enabled.
@@ -184,4 +184,3 @@ Implementation proceeds in independently tested slices:
 5. OOB and switch actions.
 6. Configurable slow expiration actions.
 7. Full catalog and live verification.
-
