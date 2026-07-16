@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from acs_auto_sit.case_plan import build_case_plan
+
 TRACKED_ISSUER_MODES = [
     "sms_otp",
     "email_otp",
@@ -88,6 +90,35 @@ def case_progress_by_id(
 ) -> dict[str, dict[str, Any]]:
     progress = build_browser_case_progress(cases, records)
     return {item["caseId"]: item for item in progress["cases"]}
+
+
+def generated_case_implementation(
+    case: dict[str, Any], issuer_mode: dict[str, Any]
+) -> dict[str, Any]:
+    plan = build_case_plan(case, issuer_mode)
+    actions = list(plan.get("actions") or [])
+    availability = case.get("availability") or {}
+    if availability.get("enabled") is False:
+        return {
+            "caseId": case.get("id", ""),
+            "status": "unavailable",
+            "completedModes": [],
+            "pendingModes": [],
+            "note": str(availability.get("reason") or "Required UI wording is unavailable."),
+            "actionCount": 0,
+            "actions": [],
+        }
+
+    completed = plan.get("coverage") == "implemented" and bool(actions)
+    return {
+        "caseId": case.get("id", ""),
+        "status": "completed" if completed else "pending",
+        "completedModes": [issuer_mode["id"]] if completed else [],
+        "pendingModes": [] if completed else [issuer_mode["id"]],
+        "note": "" if completed else str(plan.get("pendingReason") or "Generated UI flow is not implemented."),
+        "actionCount": len(actions),
+        "actions": actions,
+    }
 
 
 def _case_progress(

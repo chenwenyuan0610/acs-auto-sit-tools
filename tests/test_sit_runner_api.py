@@ -768,7 +768,44 @@ def test_generated_wording_case_uses_locale_and_base_case_metadata():
     assert transaction["payload"]["browserLanguage"] == "zh-TW"
     assert transaction["payload"]["messageCategory"] == "01"
     assert transaction["resendDelaySeconds"] == 30
-    assert server_module.live_skip_reason(generated_case) is None
+    assert server_module.live_skip_reason(generated_case, resolve_issuer_mode("sms_otp")) is None
+
+
+def test_live_runner_classifies_pending_generated_case_without_running_areq(monkeypatch):
+    case = {
+        "id": "ui_unknown",
+        "baseCaseId": "case23",
+        "wordingScenario": "unknown",
+        "wording": {"code": "UNKNOWN"},
+        "flow": {"kind": "selection_branch", "destination": "sms", "stages": []},
+        "automation": {"status": "automatable"},
+        "availability": {"enabled": True, "reason": ""},
+        "expected": {},
+    }
+    monkeypatch.setattr(server_module, "browser_cases_by_id", lambda **kwargs: {case["id"]: case})
+    monkeypatch.setattr(
+        server_module,
+        "_run_areq_flow",
+        lambda *args, **kwargs: pytest.fail("pending generated case must not invoke AReq"),
+    )
+
+    result = server_module._run_live_sit_cases(
+        [case["id"]],
+        {
+            "url": "http://127.0.0.1/not-used",
+            "headers": {"Content-Type": "application/json"},
+            "payload": {"messageType": "AReq", "messageVersion": "2.2.0"},
+            "timeoutSeconds": 1,
+        },
+        "http://127.0.0.1/api/notification",
+        resolve_issuer_mode("selection_sms_email_oob"),
+        "auto",
+    )[0]
+
+    assert result["status"] == "skipped"
+    assert result["classification"] == "not_implemented"
+    assert "not implemented" in result["reason"].lower()
+    assert result["details"]["casePlan"]["coverage"] == "pending"
 
 
 def test_live_runner_uses_generated_email_branch_destination(monkeypatch, tmp_path):

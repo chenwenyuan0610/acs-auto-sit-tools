@@ -7,8 +7,11 @@ from typing import Any
 from acs_auto_sit.case_progress import (
     DEFAULT_CASE_PROGRESS_PATH,
     build_browser_case_progress,
+    generated_case_implementation,
     load_case_progress_records,
 )
+from acs_auto_sit.case_plan import build_case_plan
+from acs_auto_sit.issuer_modes import resolve_issuer_mode
 from acs_auto_sit.wording_profiles import (
     build_localized_wording_cases,
     load_wording_profiles,
@@ -114,10 +117,15 @@ def load_browser_case_catalog(
         load_case_progress_records(progress_path),
     )
     progress_by_id = {item["caseId"]: item for item in progress["cases"]}
+    resolved_issuer_mode = resolve_issuer_mode(issuer_mode)
     cases = [
         {
             **case,
-            "caseImplementation": progress_by_id.get(case["id"], {}),
+            "caseImplementation": (
+                generated_case_implementation(case, resolved_issuer_mode)
+                if "flow" in case and "wording" in case
+                else progress_by_id.get(case["id"], {})
+            ),
         }
         for case in cases
     ]
@@ -186,10 +194,19 @@ def browser_cases_by_id(
     return {case["id"]: case for case in catalog["cases"]}
 
 
-def live_skip_reason(case: dict[str, Any]) -> str | None:
+def live_skip_reason(
+    case: dict[str, Any], issuer_mode: dict[str, Any] | None = None
+) -> str | None:
     availability = case.get("availability") or {}
     if availability.get("enabled") is False:
         return str(availability.get("reason") or "Case wording is not configured.")
+
+    if "flow" in case and "wording" in case:
+        plan = build_case_plan(case, issuer_mode or resolve_issuer_mode(None))
+        if plan.get("coverage") != "implemented":
+            pending_reason = str(plan.get("pendingReason") or "Generated UI flow is not implemented.")
+            return f"Generated UI flow is not implemented: {pending_reason}"
+
     case_id = str(case.get("baseCaseId") or case.get("id") or "")
     if case_id in LIVE_RUNNER_EXCLUDED_CASE_REASONS:
         return LIVE_RUNNER_EXCLUDED_CASE_REASONS[case_id]

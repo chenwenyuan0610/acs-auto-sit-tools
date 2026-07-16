@@ -4,6 +4,7 @@ import json
 import pytest
 from openpyxl import Workbook
 
+from acs_auto_sit import sit_runner as sit_runner_module
 from acs_auto_sit.sit_runner import load_browser_case_catalog
 from acs_auto_sit.wording_profiles import (
     DEFAULT_SUPPORTED_LOCALES,
@@ -546,4 +547,45 @@ def test_browser_catalog_preserves_raw_case_flow_metadata(tmp_path):
     assert generated["flow"]["kind"] == "selection_branch"
     assert generated["flow"]["destination"] == "sms"
     assert generated["availability"]["enabled"] is True
+    assert generated["caseImplementation"]["status"] == "completed"
     assert "case23" not in cases
+
+
+def test_browser_catalog_derives_generated_capability_status(monkeypatch, tmp_path):
+    profiles = _normalized_profiles()
+    generated_cases = [
+        {
+            "id": "ui_supported",
+            "wordingScenario": "incorrect_otp",
+            "wording": {"code": "INCORRECT_SMS_OTP"},
+            "flow": {"kind": "direct", "destination": "sms", "stages": []},
+            "availability": {"enabled": True, "reason": ""},
+        },
+        {
+            "id": "ui_pending",
+            "wordingScenario": "unknown",
+            "wording": {"code": "UNKNOWN"},
+            "flow": {"kind": "direct", "destination": "sms", "stages": []},
+            "availability": {"enabled": True, "reason": ""},
+        },
+    ]
+    monkeypatch.setattr(sit_runner_module, "load_wording_profiles", lambda path: profiles)
+    monkeypatch.setattr(
+        sit_runner_module,
+        "build_localized_wording_cases",
+        lambda *args, **kwargs: generated_cases,
+    )
+
+    catalog = load_browser_case_catalog(
+        progress_path=tmp_path / "missing-progress.json",
+        wording_profiles_path=tmp_path / "wording_profiles.json",
+        issuer_mode="selection_sms_email_oob",
+    )
+    implementations = {
+        case["id"]: case["caseImplementation"]
+        for case in catalog["cases"]
+        if case["id"] in {"ui_supported", "ui_pending"}
+    }
+
+    assert implementations["ui_supported"]["status"] == "completed"
+    assert implementations["ui_pending"]["status"] == "pending"

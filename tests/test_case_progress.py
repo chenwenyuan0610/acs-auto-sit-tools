@@ -5,9 +5,21 @@ import pytest
 from acs_auto_sit.case_progress import (
     TRACKED_ISSUER_MODES,
     build_browser_case_progress,
+    generated_case_implementation,
     load_case_progress_records,
 )
-from acs_auto_sit.sit_runner import load_browser_case_catalog
+from acs_auto_sit.issuer_modes import resolve_issuer_mode
+from acs_auto_sit.sit_runner import live_skip_reason, load_browser_case_catalog
+
+
+def _generated_case_with_flow_and_scenario(scenario: str) -> dict:
+    return {
+        "id": f"ui_sms_{scenario}",
+        "wordingScenario": scenario,
+        "wording": {"code": "SEND_SMS_OTP"},
+        "flow": {"kind": "direct", "destination": "sms", "stages": []},
+        "availability": {"enabled": True, "reason": ""},
+    }
 
 
 def test_load_case_progress_records_reads_case_modes_and_ignores_unknown_modes(tmp_path):
@@ -59,6 +71,35 @@ def test_build_browser_case_progress_defaults_missing_cases_to_pending():
     assert progress["cases"][0]["completedModes"] == ["sms_otp"]
     assert progress["cases"][1]["status"] == "pending"
     assert progress["summary"]["smsOtpCompleted"] == 1
+
+
+def test_generated_case_progress_comes_from_action_capability():
+    case = _generated_case_with_flow_and_scenario("incorrect_otp")
+
+    implementation = generated_case_implementation(
+        case,
+        resolve_issuer_mode("selection_sms_email_oob"),
+    )
+
+    assert implementation["status"] == "completed"
+    assert implementation["actionCount"] > 0
+    assert implementation["actions"][0]["type"] == "send_areq"
+
+
+def test_pending_generated_case_is_skipped_before_base_case_fallback():
+    case = {
+        "id": "ui_unknown",
+        "baseCaseId": "case23",
+        "wordingScenario": "unknown",
+        "wording": {"code": "UNKNOWN"},
+        "flow": {"kind": "selection_branch", "destination": "sms", "stages": []},
+        "automation": {"status": "manual_or_slow"},
+        "availability": {"enabled": True, "reason": ""},
+    }
+
+    reason = live_skip_reason(case, resolve_issuer_mode("selection_sms_email_oob"))
+
+    assert "not implemented" in reason.lower()
 
 
 def test_browser_case_catalog_uses_progress_file(tmp_path):

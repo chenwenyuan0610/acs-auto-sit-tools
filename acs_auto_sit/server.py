@@ -558,7 +558,7 @@ def _run_live_sit_cases(
             continue
 
         case_transaction = _transaction_for_case(case, transaction)
-        skip_reason = live_skip_reason(case)
+        skip_reason = live_skip_reason(case, issuer_mode)
         case_plan = _case_plan_for_issuer_mode(case, issuer_mode)
         effective_preferred_challenge = _preferred_challenge_for_case_plan(
             case_plan,
@@ -566,10 +566,17 @@ def _run_live_sit_cases(
         )
         case_areq = _case_areq_record(case_id, case_transaction)
         if skip_reason:
+            classification = "unsupported"
+            if (
+                case_plan.get("classification") == "generated"
+                and case_plan.get("coverage") != "implemented"
+            ):
+                classification = "not_implemented"
             results.append(
                 {
                     "caseId": case_id,
                     "status": "skipped",
+                    "classification": classification,
                     "reason": skip_reason,
                     "case": case,
                     "details": {
