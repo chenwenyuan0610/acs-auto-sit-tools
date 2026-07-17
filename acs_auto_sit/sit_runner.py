@@ -20,6 +20,7 @@ from acs_auto_sit.wording_profiles import (
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_BROWSER_CASES_PATH = PROJECT_ROOT / "sit_cases" / "pipay_cup_browser_cases.json"
+DEFAULT_OOB_BROWSER_CASES_PATH = PROJECT_ROOT / "sit_cases" / "oob_browser_cases.json"
 LIVE_RUNNER_SUPPORTED_CASE_IDS = {
     "case01",
     "case02",
@@ -67,6 +68,26 @@ LIVE_RUNNER_EXCLUDED_CASE_REASONS = {
     "case49": "Case is not included in this live run (manual_or_slow: OTP expiration wait).",
     "case50": "Case is not included in this live run (manual_or_slow: OTP expiration wait).",
 }
+
+
+def effective_preferred_challenge(
+    issuer_mode: dict[str, Any], preferred_challenge: str
+) -> str:
+    if preferred_challenge == "auto":
+        return str(issuer_mode.get("defaultPreferredChallenge") or "sms")
+    return preferred_challenge
+
+
+def browser_catalog_path(
+    issuer_mode: dict[str, Any],
+    preferred_challenge: str,
+    *,
+    otp_path: Path = DEFAULT_BROWSER_CASES_PATH,
+    oob_path: Path = DEFAULT_OOB_BROWSER_CASES_PATH,
+) -> Path:
+    if effective_preferred_challenge(issuer_mode, preferred_challenge) == "oob":
+        return oob_path
+    return otp_path
 
 
 def load_browser_case_catalog(

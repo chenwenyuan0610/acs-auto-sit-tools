@@ -9,7 +9,13 @@ from acs_auto_sit.case_progress import (
     load_case_progress_records,
 )
 from acs_auto_sit.issuer_modes import resolve_issuer_mode
-from acs_auto_sit.sit_runner import live_skip_reason, load_browser_case_catalog
+from acs_auto_sit.sit_runner import (
+    DEFAULT_OOB_BROWSER_CASES_PATH,
+    browser_catalog_path,
+    effective_preferred_challenge,
+    live_skip_reason,
+    load_browser_case_catalog,
+)
 
 
 def _generated_case_with_flow_and_scenario(scenario: str) -> dict:
@@ -20,6 +26,41 @@ def _generated_case_with_flow_and_scenario(scenario: str) -> dict:
         "flow": {"kind": "direct", "destination": "sms", "stages": []},
         "availability": {"enabled": True, "reason": ""},
     }
+
+
+@pytest.mark.parametrize(
+    ("issuer_mode_id", "preferred_challenge", "expected"),
+    [
+        ("direct_oob", "auto", "oob"),
+        ("selection_sms_oob", "oob", "oob"),
+        ("selection_sms_oob", "auto", "sms"),
+        ("selection_sms_email_oob", "email", "email"),
+    ],
+)
+def test_effective_preferred_challenge_resolves_explicit_and_auto_values(
+    issuer_mode_id, preferred_challenge, expected
+):
+    assert effective_preferred_challenge(
+        resolve_issuer_mode(issuer_mode_id), preferred_challenge
+    ) == expected
+
+
+def test_effective_oob_challenge_selects_oob_catalog():
+    assert (
+        browser_catalog_path(resolve_issuer_mode("direct_oob"), "auto")
+        == DEFAULT_OOB_BROWSER_CASES_PATH
+    )
+
+
+def test_effective_sms_challenge_preserves_caller_otp_catalog_path(tmp_path):
+    otp_path = tmp_path / "otp-cases.json"
+
+    assert (
+        browser_catalog_path(
+            resolve_issuer_mode("selection_sms_oob"), "auto", otp_path=otp_path
+        )
+        == otp_path
+    )
 
 
 def test_load_case_progress_records_reads_case_modes_and_ignores_unknown_modes(tmp_path):
