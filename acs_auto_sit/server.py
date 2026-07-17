@@ -292,8 +292,16 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
         if mode not in {"dryRun", "live"}:
             raise ValueError("mode must be dryRun or live.")
 
+        issuer_mode = resolve_issuer_mode(str(envelope.get("issuerMode") or ""))
+        issuer_id = str(envelope.get("issuerId") or "default")
+        preferred_challenge = resolve_preferred_challenge(str(envelope.get("preferredChallenge") or ""))
+
         if mode == "dryRun":
-            results = dry_run_cases(case_ids)
+            results = dry_run_cases(
+                case_ids,
+                issuer_mode=issuer_mode["id"],
+                preferred_challenge=preferred_challenge,
+            )
             self._json_response(
                 {
                     "ok": True,
@@ -304,9 +312,6 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
             )
             return
 
-        issuer_mode = resolve_issuer_mode(str(envelope.get("issuerMode") or ""))
-        issuer_id = str(envelope.get("issuerId") or "default")
-        preferred_challenge = resolve_preferred_challenge(str(envelope.get("preferredChallenge") or ""))
         transaction = envelope.get("transaction") or {}
         if not isinstance(transaction, dict):
             raise ValueError("transaction must be a JSON object.")
@@ -549,6 +554,8 @@ def _run_live_sit_cases(
     issuer_id: str = "default",
     wording_profiles_path: Path | None = None,
 ) -> list[dict[str, Any]]:
+    issuer_mode = resolve_issuer_mode(str(issuer_mode.get("id") or ""))
+    preferred_challenge = resolve_preferred_challenge(preferred_challenge)
     cases = browser_cases_by_id(
         wording_profiles_path=wording_profiles_path,
         issuer_id=issuer_id,

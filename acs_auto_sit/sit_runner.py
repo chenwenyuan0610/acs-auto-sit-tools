@@ -11,7 +11,7 @@ from acs_auto_sit.case_progress import (
     load_case_progress_records,
 )
 from acs_auto_sit.case_plan import build_case_plan
-from acs_auto_sit.issuer_modes import resolve_issuer_mode
+from acs_auto_sit.issuer_modes import resolve_issuer_mode, resolve_preferred_challenge
 from acs_auto_sit.wording_profiles import (
     build_localized_wording_cases,
     load_wording_profiles,
@@ -102,11 +102,11 @@ def load_browser_case_catalog(
 ) -> dict[str, Any]:
     resolved_issuer_mode = resolve_issuer_mode(issuer_mode)
     selected_challenge = effective_preferred_challenge(
-        resolved_issuer_mode, preferred_challenge
+        resolved_issuer_mode, resolve_preferred_challenge(preferred_challenge)
     )
     catalog_path = browser_catalog_path(
         resolved_issuer_mode,
-        preferred_challenge,
+        selected_challenge,
         otp_path=path,
         oob_path=oob_path,
     )
@@ -191,6 +191,7 @@ def load_browser_case_catalog(
         "sheet": "Browser",
         "caseCount": len(cases),
         "caseProgress": progress["summary"],
+        "effectivePreferredChallenge": selected_challenge,
         "wordingProfile": wording_profile,
         "cases": cases,
     }
@@ -223,8 +224,18 @@ def _validate_oob_browser_case_catalog(data: Any) -> None:
         )
 
 
-def dry_run_cases(case_ids: list[str], path: Path = DEFAULT_BROWSER_CASES_PATH) -> list[dict[str, Any]]:
-    catalog = load_browser_case_catalog(path)
+def dry_run_cases(
+    case_ids: list[str],
+    path: Path = DEFAULT_BROWSER_CASES_PATH,
+    *,
+    issuer_mode: str = "direct_otp",
+    preferred_challenge: str = "auto",
+) -> list[dict[str, Any]]:
+    catalog = load_browser_case_catalog(
+        path,
+        issuer_mode=issuer_mode,
+        preferred_challenge=preferred_challenge,
+    )
     cases_by_id = {case["id"]: case for case in catalog["cases"]}
     results: list[dict[str, Any]] = []
 

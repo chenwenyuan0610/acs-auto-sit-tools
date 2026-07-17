@@ -100,6 +100,8 @@ def test_preferred_challenge_is_guarded_for_single_destination_modes():
     assert "preferredChallengeInput.disabled = true" in app_js
     assert 'preferredChallengeInput?.addEventListener("change", async () => {' in app_js
     assert "await loadSitCases()" in app_js
+    assert "sitCases = result.cases || [];\n    caseResults = {};" in app_js
+    assert 'selectedCaseId = sitCases[0]?.id || "";' in app_js
 
 
 def test_frontend_imports_wording_profiles_and_disables_unavailable_cases():

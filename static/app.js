@@ -775,6 +775,7 @@ async function loadSitCases() {
     });
     const result = await getApi(`/api/sit/browser-cases?${params}`);
     sitCases = result.cases || [];
+    caseResults = {};
     caseCountEl.textContent = `${result.caseCount || sitCases.length} 個案例`;
     selectedCaseId = sitCases[0]?.id || "";
     renderCaseList();

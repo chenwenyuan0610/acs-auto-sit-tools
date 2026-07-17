@@ -47,6 +47,82 @@ def test_browser_cases_api_returns_case_list():
     assert result["cases"][0]["expected"]["messages"]["CRes"]["transStatus"] == "Y"
 
 
+@pytest.mark.parametrize(
+    ("issuer_mode", "preferred_challenge", "expected_case_id", "effective_challenge"),
+    [
+        ("direct_oob", "auto", "oob01", "oob"),
+        ("selection_sms_oob", "oob", "oob01", "oob"),
+        ("selection_sms_oob", "sms", "case01", "sms"),
+    ],
+)
+def test_browser_cases_api_selects_catalog_for_effective_preferred_challenge(
+    issuer_mode,
+    preferred_challenge,
+    expected_case_id,
+    effective_challenge,
+):
+    app_server = create_server("127.0.0.1", 0)
+    app_thread = Thread(target=app_server.serve_forever, daemon=True)
+    app_thread.start()
+
+    try:
+        with request.urlopen(
+            (
+                f"http://127.0.0.1:{app_server.server_port}/api/sit/browser-cases"
+                f"?issuerMode={issuer_mode}&preferredChallenge={preferred_challenge}"
+            ),
+            timeout=5,
+        ) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    finally:
+        _stop_server(app_server, app_thread)
+
+    assert result["effectivePreferredChallenge"] == effective_challenge
+    assert result["cases"][0]["id"] == expected_case_id
+
+
+def test_sit_run_api_dry_run_uses_selected_oob_catalog():
+    app_server = create_server("127.0.0.1", 0)
+    app_thread = Thread(target=app_server.serve_forever, daemon=True)
+    app_thread.start()
+    body = json.dumps(
+        {
+            "caseIds": ["oob01", "case01"],
+            "mode": "dryRun",
+            "issuerMode": "direct_oob",
+            "preferredChallenge": "auto",
+        }
+    ).encode("utf-8")
+    req = request.Request(
+        f"http://127.0.0.1:{app_server.server_port}/api/sit/run",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        with request.urlopen(req, timeout=5) as response:
+            result = json.loads(response.read().decode("utf-8"))
+    finally:
+        _stop_server(app_server, app_thread)
+
+    assert result["results"][0]["case"]["id"] == "oob01"
+    assert result["results"][1]["status"] == "error"
+
+
+def test_live_runner_uses_selected_oob_catalog_for_case_lookup():
+    results = server_module._run_live_sit_cases(
+        ["oob01", "case01"],
+        {"url": "http://127.0.0.1/not-used", "payload": {}, "headers": {}},
+        "http://127.0.0.1/api/notification",
+        resolve_issuer_mode("direct_oob"),
+        "auto",
+    )
+
+    assert results[0]["case"]["id"] == "oob01"
+    assert results[1]["status"] == "error"
+
+
 def test_issuer_modes_api_returns_manual_mode_choices():
     app_server = create_server("127.0.0.1", 0)
     app_thread = Thread(target=app_server.serve_forever, daemon=True)
@@ -125,7 +201,7 @@ def test_sit_run_api_live_mode_skips_unsupported_case_without_network():
 
     body = json.dumps(
         {
-            "caseIds": ["case50"],
+            "caseIds": ["oob05"],
             "mode": "live",
             "issuerMode": "direct_oob",
             "preferredChallenge": "oob",
@@ -154,9 +230,9 @@ def test_sit_run_api_live_mode_skips_unsupported_case_without_network():
     assert result["ok"] is True
     assert result["mode"] == "live"
     assert result["issuerMode"]["id"] == "direct_oob"
-    assert result["results"][0]["caseId"] == "case50"
+    assert result["results"][0]["caseId"] == "oob05"
     assert result["results"][0]["status"] == "skipped"
-    assert "manual_or_slow" in result["results"][0]["reason"]
+    assert "automation status is planned" in result["results"][0]["reason"]
     assert result["results"][0]["details"]["issuerMode"]["id"] == "direct_oob"
 
 
