@@ -127,6 +127,8 @@ Runtime verification imported the repository's normalized workbook successfully:
 
 The first OOB Browser active set is planned separately from the OTP catalog. The current recommendation is to keep OOB cases in a separate catalog, using IDs such as `oob01` through `oob13`, instead of mixing them into the existing OTP `caseXX` list.
 
+Pending follow-up: `case01` through `case20` are still legacy browser cases loaded from the original Browser SIT catalog. When the user changes issuer mode or preferred challenge, their live execution plan may select a different challenge path, but the catalog list still shows the original Excel function point, expected result, and no effective challenge metadata. Before treating these as mode-aware cases, add catalog fields such as effective challenge, effective plan summary, and mode applicability so the UI can clearly show whether each legacy case is currently running SMS OTP, Email OTP, OOB, or is not applicable for the selected mode.
+
 The first OOB active set should include:
 
 - OOB success, cancel, reject, PA/NPA valid and invalid card, 3RI valid and invalid card, interrupt, and English PA/NPA OOB UI cases.

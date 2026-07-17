@@ -14,13 +14,21 @@ GENERATED_SCENARIOS = {
 }
 
 
-def build_case_plan(case: dict[str, Any], issuer_mode: dict[str, Any]) -> dict[str, Any]:
+def build_case_plan(
+    case: dict[str, Any],
+    issuer_mode: dict[str, Any],
+    preferred_challenge: str = "auto",
+) -> dict[str, Any]:
     flow = case.get("flow") or {}
     if "wordingScenario" in case:
         return _build_generated_case_plan(case, issuer_mode)
     if not flow:
         if str(issuer_mode.get("id") or "").startswith("selection_"):
-            return build_selection_sms_otp_case_plan(case)
+            return build_selection_case_plan(
+                case,
+                _selection_destination(issuer_mode, preferred_challenge),
+                str(issuer_mode.get("id") or "selection_sms_otp"),
+            )
         return build_direct_otp_case_plan(case)
 
     kind = str(flow.get("kind") or "")
@@ -331,21 +339,58 @@ def _plan(case: dict[str, Any], actions: list[dict[str, Any]]) -> dict[str, Any]
 
 
 def build_selection_sms_otp_case_plan(case: dict[str, Any]) -> dict[str, Any]:
+    return build_selection_case_plan(case, "sms")
+
+
+def build_selection_case_plan(
+    case: dict[str, Any],
+    destination: str = "sms",
+    mode_id: str = "selection_sms_otp",
+) -> dict[str, Any]:
+    if destination == "oob":
+        actions = [
+            {"type": "send_areq"},
+            {
+                "type": "choose_authentication_mode",
+                "preferredChallenge": "oob",
+                "challengeValue": CHALLENGE_VALUES["oob"],
+                "label": "OOB",
+            },
+            {"type": "assert_oob_page"},
+            {"type": "expect_prompt"},
+        ]
+        return _flow_plan(case, {"id": mode_id}, actions, "oob", auto_select=True)
+
     direct_plan = build_direct_otp_case_plan(case)
     actions: list[dict[str, Any]] = []
+    challenge_value = CHALLENGE_VALUES.get(destination, CHALLENGE_VALUES["sms"])
+    label = destination.upper()
     for action in direct_plan.get("actions") or []:
         actions.append(action)
         if action.get("type") == "send_areq":
             actions.append(
                 {
                     "type": "choose_authentication_mode",
-                    "challengeValue": "1",
-                    "label": "SMS",
+                    "preferredChallenge": destination,
+                    "challengeValue": challenge_value,
+                    "label": label,
                 }
             )
 
     return {
         **direct_plan,
-        "mode": "selection_sms_otp",
+        "mode": mode_id,
+        "preferredChallenge": destination,
         "actions": actions,
     }
+
+
+def _selection_destination(issuer_mode: dict[str, Any], preferred_challenge: str) -> str:
+    destinations = [str(destination) for destination in issuer_mode.get("destinations") or []]
+    preferred = str(preferred_challenge or "auto")
+    if preferred in destinations:
+        return preferred
+    default = str(issuer_mode.get("defaultPreferredChallenge") or "")
+    if default in destinations:
+        return default
+    return destinations[0] if destinations else "sms"

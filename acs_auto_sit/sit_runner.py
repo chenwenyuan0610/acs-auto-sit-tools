@@ -75,6 +75,8 @@ def load_browser_case_catalog(
     wording_profiles_path: Path | None = None,
     issuer_id: str = "default",
     issuer_mode: str = "direct_otp",
+    wording_locale: str = "all",
+    preferred_challenge: str = "auto",
 ) -> dict[str, Any]:
     if not path.is_file():
         return {
@@ -102,6 +104,8 @@ def load_browser_case_catalog(
             source_cases,
             issuer_id=issuer_id,
             issuer_mode=issuer_mode,
+            wording_locale=wording_locale,
+            preferred_challenge=preferred_challenge,
         )
         source_cases = [case for case in source_cases if case.get("id") not in legacy_wording_ids] + generated
         selected_issuer = (profiles.get("issuers") or {}).get(issuer_id) or (profiles.get("issuers") or {}).get("default") or {}
@@ -109,6 +113,8 @@ def load_browser_case_catalog(
             "enabled": True,
             "issuerId": str(selected_issuer.get("id") or issuer_id),
             "issuerMode": issuer_mode,
+            "selectedLocale": str(wording_locale or "all"),
+            "selectedPreferredChallenge": str(preferred_challenge or "auto"),
             "supportedLocales": list(selected_issuer.get("supportedLocales") or []),
         }
     cases = [_case_summary(case) for case in source_cases]
@@ -184,12 +190,16 @@ def browser_cases_by_id(
     wording_profiles_path: Path | None = None,
     issuer_id: str = "default",
     issuer_mode: str = "direct_otp",
+    wording_locale: str = "all",
+    preferred_challenge: str = "auto",
 ) -> dict[str, dict[str, Any]]:
     catalog = load_browser_case_catalog(
         path,
         wording_profiles_path=wording_profiles_path,
         issuer_id=issuer_id,
         issuer_mode=issuer_mode,
+        wording_locale=wording_locale,
+        preferred_challenge=preferred_challenge,
     )
     return {case["id"]: case for case in catalog["cases"]}
 

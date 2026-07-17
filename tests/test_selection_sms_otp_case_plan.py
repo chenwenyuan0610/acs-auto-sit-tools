@@ -266,6 +266,32 @@ def test_flow_aware_case_plan_selects_requested_destination(mode_id, destination
     assert plan["preferredChallenge"] == destination
 
 
+def test_legacy_selection_case_plan_uses_preferred_oob_destination():
+    case = {
+        "id": "case04",
+        "functionPoint": "Don't enter verification code",
+        "expected": {"prompts": ["Enter OTP"]},
+        "automation": {"tags": ["prompt"]},
+    }
+
+    plan = build_case_plan(
+        case,
+        resolve_issuer_mode("selection_sms_oob"),
+        preferred_challenge="oob",
+    )
+
+    assert [action["type"] for action in plan["actions"]] == [
+        "send_areq",
+        "choose_authentication_mode",
+        "assert_oob_page",
+        "expect_prompt",
+    ]
+    selection = plan["actions"][1]
+    assert selection["preferredChallenge"] == "oob"
+    assert selection["challengeValue"] == "3"
+    assert plan["preferredChallenge"] == "oob"
+
+
 def test_flow_aware_case_plan_runs_oob_to_sms_switch_before_otp_submission():
     case = {
         "id": "ui_oob_switch_sms",

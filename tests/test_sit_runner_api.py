@@ -74,6 +74,7 @@ def test_issuer_modes_api_returns_manual_mode_choices():
     ]
     assert result["defaultIssuerMode"] == "sms_otp"
     assert [item["id"] for item in result["preferredChallenges"]] == ["auto", "sms", "email", "oob", "otp"]
+    assert result["preferredChallenges"][-1]["label"] == "Switch to OTP"
 
 
 def test_issuer_mode_alias_and_destination_metadata():
@@ -83,6 +84,11 @@ def test_issuer_mode_alias_and_destination_metadata():
     assert resolve_issuer_mode("direct_otp")["id"] == "sms_otp"
     assert resolve_issuer_mode("email_otp")["destinations"] == ["email"]
     assert resolve_issuer_mode("selection_sms_email_oob")["destinations"] == ["sms", "email", "oob"]
+    assert resolve_issuer_mode("sms_otp")["requiresPreferredChallenge"] is False
+    assert resolve_issuer_mode("email_otp")["requiresPreferredChallenge"] is False
+    assert resolve_issuer_mode("direct_oob")["requiresPreferredChallenge"] is False
+    assert resolve_issuer_mode("selection_sms_oob")["requiresPreferredChallenge"] is True
+    assert resolve_issuer_mode("default_oob_can_switch_otp")["requiresPreferredChallenge"] is True
 
 
 def test_sit_run_api_dry_run_marks_selected_cases_without_network():
@@ -400,6 +406,12 @@ def test_live_runner_runs_prompt_cases_with_expected_otp_attempts(monkeypatch):
             "autoCreq": {
                 "cres": None,
                 "otpSubmission": {
+                    "http": {
+                        "method": "POST",
+                        "url": "https://acs.example.test/otp",
+                        "request_body": {"challengeValue": ""},
+                        "status_code": 200,
+                    },
                     "challenge": {
                         "visibleText": [
                             "We just sent you a verification code to your mobile application or your number ******5666.",
@@ -432,7 +444,155 @@ def test_live_runner_runs_prompt_cases_with_expected_otp_attempts(monkeypatch):
 
     assert [call["otpAttempts"] for call in calls] == [["empty"]]
     assert [result["status"] for result in results] == ["pass"]
+    assert results[0]["details"]["challengeFlow"]["otpSubmission"]["http"]["url"] == "https://acs.example.test/otp"
     assert all(not result["details"]["prompt"]["missing"] for result in results)
+
+
+def test_prompt_case_compares_page_returned_after_empty_otp(monkeypatch):
+    def fake_run_areq_flow(envelope, notification_url):
+        return {
+            "ok": True,
+            "ares": {"transStatus": "C"},
+            "autoCreq": {
+                "cres": None,
+                "smsSelection": {
+                    "challenge": {
+                        "visibleText": [
+                            "We just sent you a verification code to your mobile application or your number ******5666.",
+                            "Merchant: HiTRUST EMV Demo Merchant",
+                            "Amount: 1.00 TWD",
+                            "Transaction time: 2026-06-29 03:48:16",
+                            "Card number: ************2574",
+                            "Incorrect verification code. You have 4 attempt(s) remaining.",
+                        ],
+                    },
+                },
+                "otpSubmission": {
+                    "http": {
+                        "method": "POST",
+                        "url": "https://acs.example.test/otp",
+                        "request_body": {"challengeValue": ""},
+                        "status_code": 200,
+                    },
+                    "challenge": {
+                        "visibleText": [
+                            "Some other validation message.",
+                        ],
+                    },
+                },
+            },
+            "http": {"request_body": envelope["payload"]},
+        }
+
+    monkeypatch.setattr(server_module, "_run_areq_flow", fake_run_areq_flow)
+
+    result = server_module._run_live_sit_cases(
+        ["case04"],
+        {
+            "url": "http://127.0.0.1/not-used",
+            "headers": {"Content-Type": "application/json"},
+            "payload": {"messageType": "AReq", "messageVersion": "2.2.0"},
+            "timeoutSeconds": 1,
+        },
+        "http://127.0.0.1/api/notification",
+        resolve_issuer_mode("selection_sms_otp"),
+        "auto",
+    )[0]
+
+    assert result["status"] == "fail"
+    assert result["details"]["prompt"]["visibleText"] == ["Some other validation message."]
+    assert "Incorrect verification code. You have 4 attempt(s) remaining." in result["details"]["prompt"]["missing"]
+    assert result["details"]["challengeFlow"]["otpSubmission"]["http"]["request_body"] == {"challengeValue": ""}
+
+
+def test_case04_passes_when_empty_otp_returns_challenge_with_attempt_keyword(monkeypatch):
+    def fake_run_areq_flow(envelope, notification_url):
+        return {
+            "ok": True,
+            "ares": {"transStatus": "C"},
+            "autoCreq": {
+                "cres": None,
+                "otpSubmission": {
+                    "http": {
+                        "method": "POST",
+                        "url": "https://acs.example.test/otp",
+                        "request_body": {"challengeValue": ""},
+                        "status_code": 200,
+                    },
+                    "challenge": {
+                        "type": "otp",
+                        "visibleText": [
+                            "Please enter OTP.",
+                            "You have 4 remaining attempts.",
+                        ],
+                    },
+                },
+            },
+            "http": {"request_body": envelope["payload"]},
+        }
+
+    monkeypatch.setattr(server_module, "_run_areq_flow", fake_run_areq_flow)
+
+    result = server_module._run_live_sit_cases(
+        ["case04"],
+        {
+            "url": "http://127.0.0.1/not-used",
+            "headers": {"Content-Type": "application/json"},
+            "payload": {"messageType": "AReq", "messageVersion": "2.2.0"},
+            "timeoutSeconds": 1,
+        },
+        "http://127.0.0.1/api/notification",
+        resolve_issuer_mode("selection_sms_otp"),
+        "auto",
+    )[0]
+
+    assert result["status"] == "pass"
+    assert result["details"]["emptyOtpValidation"]["submitted"] is True
+    assert result["details"]["emptyOtpValidation"]["hasChallengePage"] is True
+    assert result["details"]["emptyOtpValidation"]["hasKeyword"] is True
+    assert result["details"]["emptyOtpValidation"]["finalCresStatus"] == ""
+
+
+def test_case04_fails_when_empty_otp_returns_final_cres(monkeypatch):
+    def fake_run_areq_flow(envelope, notification_url):
+        return {
+            "ok": True,
+            "ares": {"transStatus": "C"},
+            "autoCreq": {
+                "cres": {"messageType": "CRes", "transStatus": "N"},
+                "otpSubmission": {
+                    "http": {
+                        "method": "POST",
+                        "url": "https://acs.example.test/otp",
+                        "request_body": {"challengeValue": ""},
+                        "status_code": 200,
+                    },
+                    "challenge": None,
+                    "cres": {"messageType": "CRes", "transStatus": "N"},
+                },
+            },
+            "http": {"request_body": envelope["payload"]},
+        }
+
+    monkeypatch.setattr(server_module, "_run_areq_flow", fake_run_areq_flow)
+
+    result = server_module._run_live_sit_cases(
+        ["case04"],
+        {
+            "url": "http://127.0.0.1/not-used",
+            "headers": {"Content-Type": "application/json"},
+            "payload": {"messageType": "AReq", "messageVersion": "2.2.0"},
+            "timeoutSeconds": 1,
+        },
+        "http://127.0.0.1/api/notification",
+        resolve_issuer_mode("selection_sms_otp"),
+        "auto",
+    )[0]
+
+    assert result["status"] == "fail"
+    assert result["details"]["emptyOtpValidation"]["submitted"] is True
+    assert result["details"]["emptyOtpValidation"]["hasChallengePage"] is False
+    assert result["details"]["emptyOtpValidation"]["finalCresStatus"] == "N"
 
 
 def test_prompt_text_matching_uses_all_challenge_stages_and_ignores_dynamic_values():
@@ -936,12 +1096,14 @@ def _normalized_generated_case_for_live_runner() -> dict:
             source_cases,
             issuer_mode="selection_sms_email_oob",
         )
-        if item["id"] == "case31_zh_TW"
+        if item.get("wordingScenario") == "incorrect_otp"
+        and (item.get("flow") or {}).get("destination") == "sms"
     )
     pending = deepcopy(case)
     pending["id"] = "case31_unknown_zh_TW"
     pending["wordingScenario"] = "unknown"
     pending["wording"] = {**pending["wording"], "code": "UNKNOWN"}
+    pending["availability"] = {"enabled": True, "reason": ""}
     return pending
 
 
@@ -1258,6 +1420,73 @@ def test_live_runner_runs_case09_success_challenge(monkeypatch):
     assert calls[0]["otpAttempts"] == ["success"]
     assert result["caseId"] == "case09"
     assert result["status"] == "pass"
+
+
+def test_live_runner_uses_transaction_result_lookup_for_rreq_criteria(monkeypatch):
+    lookups = []
+    case = {
+        "id": "case09",
+        "expected": {
+            "messages": {
+                "CRes": {"transStatus": "Y"},
+                "RReq": {"transStatus": "N", "transStatusReason": "19"},
+            }
+        },
+        "automation": {"status": "automatable", "tags": ["otp", "challenge"]},
+    }
+
+    def fake_browser_cases_by_id(**kwargs):
+        return {"case09": case}
+
+    def fake_run_areq_flow(envelope, notification_url):
+        return {
+            "ok": True,
+            "ares": {"transStatus": "C", "acsTransID": "acs-final-1"},
+            "autoCreq": {"cres": {"transStatus": "Y", "acsTransID": "acs-final-1"}},
+            "http": {"request_body": envelope["payload"]},
+        }
+
+    def fake_lookup(acs_trans_id, url_template, timeout_seconds=30):
+        lookups.append((acs_trans_id, url_template, timeout_seconds))
+        return {
+            "ok": True,
+            "source": "remote",
+            "acsTransID": acs_trans_id,
+            "transaction": {"transStatus": "N", "transStatusReason": "19"},
+            "http": {"url": url_template.replace("{acsTrandId}", acs_trans_id)},
+        }
+
+    monkeypatch.setattr(server_module, "browser_cases_by_id", fake_browser_cases_by_id)
+    monkeypatch.setattr(server_module, "_run_areq_flow", fake_run_areq_flow)
+    monkeypatch.setattr(server_module, "lookup_transaction_result_for_acs_trans_id", fake_lookup)
+
+    result = server_module._run_live_sit_cases(
+        ["case09"],
+        {
+            "url": "http://127.0.0.1/not-used",
+            "headers": {"Content-Type": "application/json"},
+            "payload": {"messageType": "AReq", "messageVersion": "2.2.0"},
+            "timeoutSeconds": 7,
+            "transactionResultUrl": "https://acscloud-test.hitrust-us.com/acs-sit-info/api/sit/transaction/{acsTrandId}",
+        },
+        "http://127.0.0.1/api/notification",
+        resolve_issuer_mode("selection_sms_otp"),
+        "auto",
+    )[0]
+
+    assert lookups == [
+        (
+            "acs-final-1",
+            "https://acscloud-test.hitrust-us.com/acs-sit-info/api/sit/transaction/{acsTrandId}",
+            7,
+        )
+    ]
+    assert result["status"] == "pass"
+    assert result["details"]["transactionResult"]["actual"] == {
+        "transStatus": "N",
+        "transStatusReason": "19",
+    }
+    assert result["details"]["transactionResult"]["mismatches"] == {}
 
 
 def test_live_runner_matches_case10_to_case12_ares_only_results(monkeypatch):
@@ -1739,6 +1968,89 @@ def test_challenge_advance_uses_lookup_api_for_acs_generated_success_otp(monkeyp
     assert forms == [{"acsTransID": "acs-trans-lookup", "challengeValue": "654321"}]
     assert response["otpSubmission"]["otpLookup"]["source"] == "lookup_api"
     assert response["otpSubmission"]["simulatedOtpUsed"] is False
+
+
+def test_challenge_advance_reuses_acs_generated_otp_lookup_for_retry(monkeypatch):
+    forms = []
+    lookups = []
+
+    def fake_lookup_acs_generated_otp(acs_trans_id, settings, timeout_seconds=30):
+        lookups.append(acs_trans_id)
+        return "654321", {"source": "lookup_api", "lookupUsed": True}
+
+    def fake_post_form(url, form, headers=None, timeout_seconds=30, use_system_proxy=False):
+        forms.append(form)
+        if len(forms) == 1:
+            response_text = """
+            <html><body>
+              <form action="/otp" method="POST">
+                <input type="hidden" name="acsTransID" value="acs-trans-cache">
+                <input type="text" name="challengeValue" value="">
+              </form>
+            </body></html>
+            """
+        else:
+            response_text = """
+            <html><body>
+              <form method="POST">
+                <input type="hidden" name="cres" value="">
+              </form>
+            </body></html>
+            """
+        return PostResult(
+            method="POST",
+            url=url,
+            request_headers={},
+            request_body=form,
+            status_code=200,
+            response_headers={},
+            response_text=response_text,
+            response_json=None,
+            elapsed_ms=1,
+            error=None,
+        )
+
+    monkeypatch.setattr(server_module, "lookup_acs_generated_otp", fake_lookup_acs_generated_otp)
+    monkeypatch.setattr(server_module, "post_form", fake_post_form)
+    monkeypatch.setattr(server_module.time, "sleep", lambda seconds: None)
+    page = server_module.parse_challenge_page(
+        """
+        <html><body>
+          <form action="/otp" method="POST">
+            <input type="hidden" name="acsTransID" value="acs-trans-cache">
+            <input type="text" name="challengeValue" value="">
+          </form>
+        </body></html>
+        """,
+        "https://acs.example.test/challenge",
+    )
+    response = {"otpSubmissions": []}
+
+    server_module._advance_challenge_response(
+        response,
+        page,
+        {"acsTransID": "acs-trans-cache"},
+        1,
+        True,
+        "123456",
+        ["success"],
+        server_module.OtpSettings(
+            source_mode="acs_generated",
+            success_otp="123456",
+            failure_otp="000000",
+            lookup_url_template="https://acscloud-test.hitrust-us.com/acs-sit-info/api/sit/otp/{acsTrandId}",
+        ),
+        "http://127.0.0.1/api/notification",
+        resolve_issuer_mode("direct_otp"),
+        "auto",
+    )
+
+    assert lookups == ["acs-trans-cache"]
+    assert forms == [
+        {"acsTransID": "acs-trans-cache", "challengeValue": "654321"},
+        {"acsTransID": "acs-trans-cache", "challengeValue": "654321"},
+    ]
+    assert response["otpSubmission"]["otpLookup"]["source"] == "lookup_api"
 
 
 def test_live_runner_runs_resend_limit_cases(monkeypatch):

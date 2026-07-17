@@ -193,6 +193,8 @@ def build_localized_wording_cases(
     *,
     issuer_id: str = "default",
     issuer_mode: str = "direct_otp",
+    wording_locale: str = "all",
+    preferred_challenge: str = "auto",
 ) -> list[dict[str, Any]]:
     if profiles.get("sourceFormat") == "challenge_ui_info":
         return _build_raw_localized_wording_cases(
@@ -200,12 +202,30 @@ def build_localized_wording_cases(
             source_cases,
             issuer_id=issuer_id,
             issuer_mode=issuer_mode,
+            wording_locale=wording_locale,
+            preferred_challenge=preferred_challenge,
+        )
+    if (
+        issuer_mode == "direct_oob"
+        or issuer_mode == "default_oob_can_switch_otp"
+        or issuer_mode.startswith("selection_")
+    ):
+        return _build_normalized_flow_cases(
+            profiles,
+            source_cases,
+            issuer_id=issuer_id,
+            issuer_mode=issuer_mode,
+            wording_locale=wording_locale,
+            preferred_challenge=preferred_challenge,
         )
 
     issuers = profiles.get("issuers") or {}
     issuer = issuers.get(issuer_id) or issuers.get("default") or {}
     selected_issuer_id = str(issuer.get("id") or issuer_id or "default")
-    locales = issuer.get("supportedLocales") or profiles.get("defaultSupportedLocales") or DEFAULT_SUPPORTED_LOCALES
+    locales = _filter_wording_locales(
+        issuer.get("supportedLocales") or profiles.get("defaultSupportedLocales") or DEFAULT_SUPPORTED_LOCALES,
+        wording_locale,
+    )
     templates = {str(case.get("id") or ""): case for case in source_cases}
     wording_index = _wording_field_index(profiles.get("wordings") or [])
     generated: list[dict[str, Any]] = []
@@ -258,19 +278,202 @@ def build_localized_wording_cases(
     return generated
 
 
+def _build_normalized_flow_cases(
+    profiles: dict[str, Any],
+    source_cases: list[dict[str, Any]],
+    *,
+    issuer_id: str,
+    issuer_mode: str,
+    wording_locale: str,
+    preferred_challenge: str = "auto",
+) -> list[dict[str, Any]]:
+    from acs_auto_sit.issuer_modes import resolve_issuer_mode
+
+    mode = resolve_issuer_mode(issuer_mode)
+    destinations = list(mode.get("destinations") or [])
+    branch_destinations = _preferred_destinations(destinations, preferred_challenge)
+    issuers = profiles.get("issuers") or {}
+    issuer = issuers.get(issuer_id) or issuers.get("default") or {}
+    selected_issuer_id = str(issuer.get("id") or issuer_id or "default")
+    supported_locales = _filter_wording_locales(
+        issuer.get("supportedLocales") or profiles.get("defaultSupportedLocales") or DEFAULT_SUPPORTED_LOCALES,
+        wording_locale,
+    )
+    templates = {str(case.get("id") or ""): case for case in source_cases}
+    wordings = profiles.get("wordings") or []
+    by_sheet = {
+        "Single Select": _normalized_source_groups(
+            wordings,
+            selected_issuer_id,
+            "Single Select",
+            [issuer_mode, "selection_sms_otp"],
+            supported_locales,
+        ),
+        "SMS": _normalized_source_groups(
+            wordings,
+            selected_issuer_id,
+            "SMS",
+            [issuer_mode, "sms_otp", "direct_otp"],
+            supported_locales,
+        ),
+        "Email": _normalized_source_groups(
+            wordings,
+            selected_issuer_id,
+            "Email",
+            [issuer_mode, "email_otp", "direct_otp"],
+            supported_locales,
+        ),
+        "OOB": _normalized_source_groups(
+            wordings,
+            selected_issuer_id,
+            "OOB",
+            [issuer_mode, "direct_oob"],
+            supported_locales,
+        ),
+    }
+
+    if mode["id"] == "default_oob_can_switch_otp":
+        sms_initial_groups = [
+            group
+            for group in by_sheet["SMS"]
+            if _raw_wording_scenario(group["wordingCode"]) == "initial_challenge"
+        ]
+        return [
+            _raw_switch_case(
+                group,
+                _matching_group(sms_initial_groups, group),
+                templates,
+                mode,
+            )
+            for group in by_sheet["OOB"]
+        ]
+
+    if mode["id"].startswith("selection_"):
+        generated = [
+            _raw_case(
+                group,
+                templates,
+                mode,
+                flow_kind="selection_page",
+                destination="selection",
+                stages=[_raw_stage("single_select", group)],
+            )
+            for group in by_sheet["Single Select"]
+        ]
+        sheet_by_destination = {"sms": "SMS", "email": "Email", "oob": "OOB"}
+        for destination in branch_destinations:
+            for group in by_sheet[sheet_by_destination[destination]]:
+                selection = _matching_group(by_sheet["Single Select"], group)
+                generated.append(
+                    _raw_case(
+                        group,
+                        templates,
+                        mode,
+                        flow_kind="selection_branch",
+                        destination=destination,
+                        stages=[
+                            _raw_stage("single_select", selection),
+                            _raw_stage(destination, group),
+                        ],
+                        extra_missing=[] if selection else [
+                            f"Missing Single Select wording for category={group['messageCategory']}, "
+                            f"locale={group['locale']}"
+                        ],
+                    )
+                )
+        return generated
+
+    sheet_by_destination = {"sms": "SMS", "email": "Email", "oob": "OOB"}
+    destination = destinations[0]
+    return [
+        _raw_case(
+            group,
+            templates,
+            mode,
+            flow_kind="direct",
+            destination=destination,
+            stages=[_raw_stage(destination, group)],
+        )
+        for group in by_sheet[sheet_by_destination[destination]]
+    ]
+
+
+def _preferred_destinations(destinations: list[str], preferred_challenge: str) -> list[str]:
+    preferred = str(preferred_challenge or "auto")
+    if preferred in destinations:
+        return [preferred]
+    return destinations
+
+
+def _normalized_source_groups(
+    wordings: Iterable[dict[str, Any]],
+    issuer_id: str,
+    source_sheet: str,
+    issuer_modes: Iterable[str],
+    supported_locales: Iterable[str],
+) -> list[dict[str, Any]]:
+    locale_set = {str(locale) for locale in supported_locales}
+    mode_set = {str(mode) for mode in issuer_modes if mode}
+    groups: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for wording in wordings:
+        wording_issuer = str(wording.get("issuerId") or "default")
+        if wording_issuer not in {"default", issuer_id}:
+            continue
+        if str(wording.get("issuerMode") or "") not in mode_set:
+            continue
+        if str(wording.get("deviceChannel") or "").upper() != "BROWSER":
+            continue
+        if str(wording.get("sourceSheet") or "") != source_sheet:
+            continue
+        locale = str(wording.get("locale") or "")
+        if locale_set and locale not in locale_set:
+            continue
+        key = (
+            str(wording.get("messageCategory") or "").upper(),
+            str(wording.get("wordingCode") or "").upper(),
+            locale,
+        )
+        group = groups.setdefault(
+            key,
+            {
+                "messageCategory": key[0],
+                "wordingCode": key[1],
+                "locale": key[2],
+                "sourceSheet": source_sheet,
+                "fields": {},
+            },
+        )
+        field_key = str(wording.get("fieldKey") or "")
+        content = str(wording.get("content") or "")
+        if field_key and content:
+            group["fields"][field_key] = content
+    return sorted(
+        groups.values(),
+        key=lambda group: (
+            group["messageCategory"],
+            group["wordingCode"],
+            _locale_sort_key(group["locale"]),
+        ),
+    )
+
+
 def _build_raw_localized_wording_cases(
     profiles: dict[str, Any],
     source_cases: list[dict[str, Any]],
     *,
     issuer_id: str,
     issuer_mode: str,
+    wording_locale: str = "all",
+    preferred_challenge: str = "auto",
 ) -> list[dict[str, Any]]:
     from acs_auto_sit.issuer_modes import resolve_issuer_mode
 
     mode = resolve_issuer_mode(issuer_mode)
     destinations = list(mode.get("destinations") or [])
+    branch_destinations = _preferred_destinations(destinations, preferred_challenge)
     templates = {str(case.get("id") or ""): case for case in source_cases}
     groups = _raw_wording_groups(profiles.get("wordings") or [], issuer_id)
+    groups = [group for group in groups if _wording_locale_matches(group["locale"], wording_locale)]
     by_sheet = {
         sheet: [group for group in groups if group["sourceSheet"] == sheet]
         for sheet in RAW_SOURCE_SHEETS
@@ -296,7 +499,7 @@ def _build_raw_localized_wording_cases(
             for group in selection_groups
         ]
         sheet_by_destination = {"sms": "SMS", "email": "Email", "oob": "OOB"}
-        for destination in destinations:
+        for destination in branch_destinations:
             for group in by_sheet[sheet_by_destination[destination]]:
                 selection = _matching_group(selection_groups, group)
                 generated.append(
@@ -331,6 +534,19 @@ def _build_raw_localized_wording_cases(
         )
         for group in by_sheet[sheet_by_destination[destination]]
     ]
+
+
+def _filter_wording_locales(locales: Iterable[str], wording_locale: str) -> list[str]:
+    values = [str(locale) for locale in locales]
+    selected = str(wording_locale or "all")
+    if selected == "all":
+        return values
+    return [locale for locale in values if locale == selected]
+
+
+def _wording_locale_matches(locale: str, wording_locale: str) -> bool:
+    selected = str(wording_locale or "all")
+    return selected == "all" or locale == selected
 
 
 def _raw_wording_groups(

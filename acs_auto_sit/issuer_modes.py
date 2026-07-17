@@ -18,6 +18,7 @@ ISSUER_MODES: list[dict[str, Any]] = [
         "description": "Issuer enters an SMS OTP challenge directly.",
         "defaultPreferredChallenge": "sms",
         "destinations": ["sms"],
+        "requiresPreferredChallenge": False,
     },
     {
         "id": "email_otp",
@@ -25,6 +26,7 @@ ISSUER_MODES: list[dict[str, Any]] = [
         "description": "Issuer enters an Email OTP challenge directly.",
         "defaultPreferredChallenge": "email",
         "destinations": ["email"],
+        "requiresPreferredChallenge": False,
     },
     {
         "id": "direct_oob",
@@ -32,6 +34,7 @@ ISSUER_MODES: list[dict[str, Any]] = [
         "description": "Issuer skips verification selection and enters OOB challenge directly.",
         "defaultPreferredChallenge": "oob",
         "destinations": ["oob"],
+        "requiresPreferredChallenge": False,
     },
     {
         "id": "selection_sms_oob",
@@ -39,6 +42,7 @@ ISSUER_MODES: list[dict[str, Any]] = [
         "description": "Issuer shows a selection page with SMS and OOB destinations.",
         "defaultPreferredChallenge": "sms",
         "destinations": ["sms", "oob"],
+        "requiresPreferredChallenge": True,
     },
     {
         "id": "selection_sms_email",
@@ -46,6 +50,7 @@ ISSUER_MODES: list[dict[str, Any]] = [
         "description": "Issuer shows a selection page with SMS and Email destinations.",
         "defaultPreferredChallenge": "sms",
         "destinations": ["sms", "email"],
+        "requiresPreferredChallenge": True,
     },
     {
         "id": "selection_sms_email_oob",
@@ -53,6 +58,7 @@ ISSUER_MODES: list[dict[str, Any]] = [
         "description": "Issuer shows a selection page with SMS, Email, and OOB destinations.",
         "defaultPreferredChallenge": "sms",
         "destinations": ["sms", "email", "oob"],
+        "requiresPreferredChallenge": True,
     },
     {
         "id": "selection_email_oob",
@@ -60,6 +66,7 @@ ISSUER_MODES: list[dict[str, Any]] = [
         "description": "Issuer shows a selection page with Email and OOB destinations.",
         "defaultPreferredChallenge": "email",
         "destinations": ["email", "oob"],
+        "requiresPreferredChallenge": True,
     },
     {
         "id": "default_oob_can_switch_otp",
@@ -68,6 +75,7 @@ ISSUER_MODES: list[dict[str, Any]] = [
         "defaultPreferredChallenge": "oob",
         "destinations": ["oob", "sms"],
         "switchDestination": "sms",
+        "requiresPreferredChallenge": True,
     },
 ]
 
@@ -76,7 +84,7 @@ PREFERRED_CHALLENGES: list[dict[str, str]] = [
     {"id": "sms", "label": "SMS"},
     {"id": "email", "label": "Email"},
     {"id": "oob", "label": "OOB"},
-    {"id": "otp", "label": "OTP"},
+    {"id": "otp", "label": "Switch to OTP"},
 ]
 
 

@@ -43,7 +43,11 @@ from acs_auto_sit.three_ds import (
 )
 from acs_auto_sit.ui_validation import stage_page, validate_stage_fields
 from acs_auto_sit.ui_action_runner import ActionContext, execute_generated_actions
-from acs_auto_sit.transaction_result_provider import simulated_transaction_result_for_acs_trans_id
+from acs_auto_sit.transaction_result_provider import (
+    DEFAULT_TRANSACTION_RESULT_URL,
+    lookup_transaction_result_for_acs_trans_id,
+    simulated_transaction_result_for_acs_trans_id,
+)
 from acs_auto_sit.wording_profiles import (
     DEFAULT_SUPPORTED_LOCALES,
     DEFAULT_WORDING_PROFILES_PATH,
@@ -164,10 +168,14 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
     def _handle_browser_cases(self, query: dict[str, list[str]]) -> None:
         issuer_id = str((query.get("issuerId") or ["default"])[0] or "default")
         issuer_mode = str((query.get("issuerMode") or ["sms_otp"])[0] or "sms_otp")
+        wording_locale = str((query.get("wordingLocale") or ["all"])[0] or "all")
+        preferred_challenge = str((query.get("preferredChallenge") or ["auto"])[0] or "auto")
         catalog = load_browser_case_catalog(
             wording_profiles_path=self._wording_profiles_path(),
             issuer_id=issuer_id,
             issuer_mode=issuer_mode,
+            wording_locale=wording_locale,
+            preferred_challenge=preferred_challenge,
         )
         self._json_response({"ok": True, **catalog})
 
@@ -179,6 +187,8 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
         profiles = load_wording_profiles(path) if path else None
         issuer_id = str((query.get("issuerId") or ["default"])[0] or "default")
         requested_mode = str((query.get("issuerMode") or ["sms_otp"])[0] or "sms_otp")
+        wording_locale = str((query.get("wordingLocale") or ["all"])[0] or "all")
+        preferred_challenge = str((query.get("preferredChallenge") or ["auto"])[0] or "auto")
         if not profiles:
             self._json_response(
                 {
@@ -204,6 +214,8 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
             wording_profiles_path=path,
             issuer_id=issuer_id,
             issuer_mode=selected_mode,
+            wording_locale=wording_locale,
+            preferred_challenge=preferred_challenge,
         )
         generated_count = _generated_wording_case_count(catalog)
         summary = {**(profiles.get("summary") or {}), "generatedCaseCount": generated_count}
@@ -541,6 +553,7 @@ def _run_live_sit_cases(
         wording_profiles_path=wording_profiles_path,
         issuer_id=issuer_id,
         issuer_mode=issuer_mode["id"],
+        preferred_challenge=preferred_challenge,
     )
     results: list[dict[str, Any]] = []
     case_delay_seconds = _read_case_delay_seconds(transaction)
@@ -564,7 +577,7 @@ def _run_live_sit_cases(
             continue
 
         case_transaction = _transaction_for_case(case, transaction)
-        case_plan = _case_plan_for_issuer_mode(case, issuer_mode)
+        case_plan = _case_plan_for_issuer_mode(case, issuer_mode, preferred_challenge)
         effective_preferred_challenge = _preferred_challenge_for_case_plan(
             case_plan,
             preferred_challenge,
@@ -740,15 +753,34 @@ def _run_live_sit_cases(
         )
         cres = (run_result.get("autoCreq") or {}).get("cres") if isinstance(run_result.get("autoCreq"), dict) else None
         actual_status = cres.get("transStatus") if isinstance(cres, dict) else None
-        passed = run_result.get("ok") is True and expected_status == actual_status
+        transaction_result = _lookup_expected_transaction_result(
+            expected_messages,
+            run_result,
+            envelope,
+        )
+        passed = (
+            run_result.get("ok") is True
+            and expected_status == actual_status
+            and not transaction_result.get("mismatches")
+            and not transaction_result.get("error")
+        )
         status = "pass" if passed else "fail"
         reason = (
-            f"CRes transStatus matched {expected_status}."
+            (
+                f"CRes transStatus matched {expected_status}; "
+                f"RReq criteria matched."
+                if transaction_result
+                else f"CRes transStatus matched {expected_status}."
+            )
             if passed
             else (
                 _acs_error_reason(run_result.get("ares"))
                 if _is_acs_error(run_result.get("ares"))
-                else _expected_actual_reason("CRes transStatus", expected_status, actual_status)
+                else (
+                    _transaction_result_reason(transaction_result)
+                    if transaction_result.get("mismatches") or transaction_result.get("error")
+                    else _expected_actual_reason("CRes transStatus", expected_status, actual_status)
+                )
             )
         )
         results.append(
@@ -767,6 +799,7 @@ def _run_live_sit_cases(
                     "cres": cres,
                     "challengeFlow": run_result.get("autoCreq"),
                     "notification": _notification_from_auto_creq(run_result.get("autoCreq")),
+                    "transactionResult": transaction_result or None,
                     "http": {
                         "areq": run_result.get("http"),
                     },
@@ -827,6 +860,73 @@ def _ares_only_result(
             "error": run_result.get("error") or run_result.get("draftError"),
         },
     }
+
+
+def _lookup_expected_transaction_result(
+    expected_messages: dict[str, Any],
+    run_result: dict[str, Any],
+    envelope: dict[str, Any],
+) -> dict[str, Any]:
+    expected_rreq = expected_messages.get("RReq") or {}
+    if not isinstance(expected_rreq, dict) or not expected_rreq:
+        return {}
+
+    acs_trans_id = _acs_trans_id_from_run_result(run_result)
+    if not acs_trans_id:
+        return {}
+
+    lookup = lookup_transaction_result_for_acs_trans_id(
+        acs_trans_id,
+        _read_transaction_result_url(envelope),
+        timeout_seconds=int(envelope.get("timeoutSeconds") or 30),
+    )
+    actual = lookup.get("transaction") if isinstance(lookup.get("transaction"), dict) else {}
+    mismatches = _message_mismatches(expected_rreq, actual)
+    return {
+        "expected": expected_rreq,
+        "actual": actual,
+        "mismatches": mismatches,
+        "lookup": lookup,
+        "error": lookup.get("error") if not lookup.get("ok") else "",
+    }
+
+
+def _acs_trans_id_from_run_result(run_result: dict[str, Any]) -> str:
+    auto_creq = run_result.get("autoCreq") if isinstance(run_result.get("autoCreq"), dict) else {}
+    notification = _notification_from_auto_creq(auto_creq)
+    candidates = [
+        (run_result.get("ares") or {}).get("acsTransID") if isinstance(run_result.get("ares"), dict) else "",
+        (auto_creq.get("cres") or {}).get("acsTransID") if isinstance(auto_creq.get("cres"), dict) else "",
+        (notification or {}).get("cres", {}).get("acsTransID") if isinstance(notification, dict) else "",
+        (notification or {}).get("notification", {}).get("cres", {}).get("acsTransID") if isinstance(notification, dict) else "",
+    ]
+    return next((str(value).strip() for value in candidates if str(value or "").strip()), "")
+
+
+def _message_mismatches(expected: dict[str, Any], actual: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    mismatches: dict[str, dict[str, Any]] = {}
+    for key, expected_value in expected.items():
+        if expected_value is None:
+            continue
+        actual_value = actual.get(key)
+        if not _expected_value_matches(expected_value, actual_value):
+            mismatches[key] = {"expected": expected_value, "actual": actual_value}
+    return mismatches
+
+
+def _expected_value_matches(expected: Any, actual: Any) -> bool:
+    expected_text = str(expected)
+    if expected_text == "not_null":
+        return actual not in (None, "", "null")
+    if expected_text == "null":
+        return actual in (None, "", "null")
+    return str(actual) == expected_text
+
+
+def _transaction_result_reason(transaction_result: dict[str, Any]) -> str:
+    if transaction_result.get("error"):
+        return f"Transaction result lookup failed: {transaction_result['error']}."
+    return f"RReq mismatched values: {transaction_result.get('mismatches') or {}}."
 
 
 def _generated_ui_result(
@@ -1008,16 +1108,27 @@ def _run_transaction_case(
         )
         cres = (run_result.get("autoCreq") or {}).get("cres") if isinstance(run_result.get("autoCreq"), dict) else None
         actual_status = cres.get("transStatus") if isinstance(cres, dict) else None
+        transaction_result = _lookup_expected_transaction_result(
+            expected_transaction.get("messages") or {},
+            run_result,
+            transaction_envelope,
+        )
         transaction_results.append(
             {
                 "index": index,
                 "label": expected_transaction.get("label", ""),
                 "expectedStatus": expected_status,
                 "actualStatus": actual_status,
-                "passed": run_result.get("ok") is True and expected_status == actual_status,
+                "passed": (
+                    run_result.get("ok") is True
+                    and expected_status == actual_status
+                    and not transaction_result.get("mismatches")
+                    and not transaction_result.get("error")
+                ),
                 "ares": run_result.get("ares"),
                 "cres": cres,
                 "notification": _notification_from_auto_creq(run_result.get("autoCreq")),
+                "transactionResult": transaction_result or None,
                 "http": {"areq": run_result.get("http")},
                 "error": run_result.get("error") or run_result.get("draftError"),
             }
@@ -1083,8 +1194,8 @@ def _run_prompt_case(
         )
     expected = case.get("expected", {}) or {}
     expected_prompts = expected.get("prompts") or []
-    visible_text = _visible_text_from_run_result(run_result)
-    raw_html = _raw_html_from_run_result(run_result)
+    visible_text = _prompt_visible_text_from_run_result(run_result, case_plan)
+    raw_html = _prompt_raw_html_from_run_result(run_result, case_plan)
     excel_fields = expected.get("uiFields") or {}
     field_results = (
         _excel_field_results(excel_fields, visible_text)
@@ -1112,6 +1223,7 @@ def _run_prompt_case(
                 },
                 "ares": run_result.get("ares"),
                 "cres": None,
+                "challengeFlow": run_result.get("autoCreq"),
                 "notification": _notification_from_auto_creq(run_result.get("autoCreq")),
                 "http": {
                     "areq": run_result.get("http"),
@@ -1124,11 +1236,18 @@ def _run_prompt_case(
         if field_results
         else _missing_prompt_text(expected_prompts, visible_text)
     )
-    passed = run_result.get("ok") is True and bool(visible_text) and not missing
-    return {
-        "caseId": case_id,
-        "status": "pass" if passed else "fail",
-        "reason": (
+    empty_otp_validation = _empty_otp_validation(run_result, case_plan)
+    if empty_otp_validation:
+        passed = run_result.get("ok") is True and bool(empty_otp_validation.get("passed"))
+        reason = (
+            "Empty OTP stayed on a challenge page with OTP/attempt keywords."
+            if passed
+            else _empty_otp_validation_reason(empty_otp_validation)
+        )
+        missing = [] if passed else expected_prompts
+    else:
+        passed = run_result.get("ok") is True and bool(visible_text) and not missing
+        reason = (
             "Expected prompt text was found."
             if passed
             else (
@@ -1136,7 +1255,11 @@ def _run_prompt_case(
                 if visible_text
                 else "No challenge page text was captured."
             )
-        ),
+        )
+    return {
+        "caseId": case_id,
+        "status": "pass" if passed else "fail",
+        "reason": reason,
         "case": case,
         "details": {
             "expected": case.get("expected", {}),
@@ -1153,6 +1276,8 @@ def _run_prompt_case(
             },
             "ares": run_result.get("ares"),
             "cres": None,
+            "challengeFlow": run_result.get("autoCreq"),
+            "emptyOtpValidation": empty_otp_validation or None,
             "notification": _notification_from_auto_creq(run_result.get("autoCreq")),
             "http": {
                 "areq": run_result.get("http"),
@@ -1160,6 +1285,75 @@ def _run_prompt_case(
             "error": run_result.get("error") or run_result.get("draftError"),
         },
     }
+
+
+def _empty_otp_validation(
+    run_result: dict[str, Any],
+    case_plan: dict[str, Any] | None,
+) -> dict[str, Any]:
+    has_empty_submit = any(
+        action.get("type") == "submit_otp" and action.get("otpPurpose") == "empty"
+        for action in (case_plan or {}).get("actions") or []
+    )
+    if not has_empty_submit:
+        return {}
+
+    auto_creq = run_result.get("autoCreq") if isinstance(run_result.get("autoCreq"), dict) else {}
+    otp_submission = auto_creq.get("otpSubmission") if isinstance(auto_creq, dict) else {}
+    submissions = auto_creq.get("otpSubmissions") if isinstance(auto_creq, dict) else []
+    submitted = bool(otp_submission or submissions)
+    challenge_page = (
+        otp_submission.get("challenge")
+        if isinstance(otp_submission, dict)
+        else None
+    )
+    if not isinstance(challenge_page, dict):
+        for submission in reversed(submissions or []):
+            page = submission.get("challenge") if isinstance(submission, dict) else None
+            if isinstance(page, dict):
+                challenge_page = page
+                break
+
+    visible_text = _submission_visible_text(auto_creq, "otpSubmission", "otpSubmissions")
+    final_cres = (
+        auto_creq.get("cres")
+        or (otp_submission.get("cres") if isinstance(otp_submission, dict) else None)
+    )
+    final_status = str(final_cres.get("transStatus") or "") if isinstance(final_cres, dict) else ""
+    keyword_matches = _empty_otp_keyword_matches(visible_text)
+    passed = submitted and not final_status and isinstance(challenge_page, dict) and bool(keyword_matches)
+    return {
+        "submitted": submitted,
+        "hasChallengePage": isinstance(challenge_page, dict),
+        "hasKeyword": bool(keyword_matches),
+        "keywordMatches": keyword_matches,
+        "actualKeywords": visible_text[:12],
+        "finalCresStatus": final_status,
+        "passed": passed,
+    }
+
+
+def _empty_otp_keyword_matches(visible_text: list[str]) -> list[str]:
+    text = "\n".join(visible_text).lower()
+    patterns = {
+        "OTP": r"\botp\b",
+        "verification code": r"verification\s+code",
+        "remaining attempts": r"remain(?:ing)?\s+\d+\s+attempts?|\d+\s+remain(?:ing)?\s+attempts?",
+        "attempt": r"attempt(?:\(s\))?s?",
+    }
+    return [label for label, pattern in patterns.items() if re.search(pattern, text)]
+
+
+def _empty_otp_validation_reason(validation: dict[str, Any]) -> str:
+    if not validation.get("submitted"):
+        return "Empty OTP was not submitted."
+    if validation.get("finalCresStatus"):
+        return f"Empty OTP returned final CRes transStatus={validation['finalCresStatus']}."
+    if not validation.get("hasChallengePage"):
+        return "Empty OTP did not return a challenge page."
+    if not validation.get("hasKeyword"):
+        return "Returned challenge page did not contain OTP or remaining-attempt keywords."
+    return "Empty OTP behavior did not match expected challenge-page criteria."
 
 
 def _run_resend_limit_case(
@@ -1242,6 +1436,40 @@ def _visible_text_from_run_result(run_result: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(visible_text))
 
 
+def _prompt_visible_text_from_run_result(
+    run_result: dict[str, Any],
+    case_plan: dict[str, Any] | None,
+) -> list[str]:
+    auto_creq = run_result.get("autoCreq")
+    if not isinstance(auto_creq, dict):
+        return []
+    actions = [str(action.get("type") or "") for action in (case_plan or {}).get("actions") or []]
+    if "submit_otp" in actions:
+        visible_text = _submission_visible_text(auto_creq, "otpSubmission", "otpSubmissions")
+        return visible_text or _visible_text_from_run_result(run_result)
+    if "resend_otp" in actions or "resend_until_limit" in actions:
+        visible_text = _submission_visible_text(auto_creq, "resendSubmission", "resendSubmissions")
+        return visible_text or _visible_text_from_run_result(run_result)
+    return _visible_text_from_run_result(run_result)
+
+
+def _submission_visible_text(
+    auto_creq: dict[str, Any],
+    latest_key: str,
+    collection_key: str,
+) -> list[str]:
+    visible_text: list[str] = []
+    latest = auto_creq.get(latest_key)
+    latest_page = latest.get("challenge") if isinstance(latest, dict) else None
+    if isinstance(latest_page, dict) and isinstance(latest_page.get("visibleText"), list):
+        visible_text.extend(str(item) for item in latest_page["visibleText"])
+    for submission in auto_creq.get(collection_key) or []:
+        page = submission.get("challenge") if isinstance(submission, dict) else None
+        if isinstance(page, dict) and isinstance(page.get("visibleText"), list):
+            visible_text.extend(str(item) for item in page["visibleText"])
+    return list(dict.fromkeys(visible_text))
+
+
 def _raw_html_from_run_result(run_result: dict[str, Any]) -> list[dict[str, str]]:
     auto_creq = run_result.get("autoCreq")
     if not isinstance(auto_creq, dict):
@@ -1266,6 +1494,42 @@ def _raw_html_from_run_result(run_result: dict[str, Any]) -> list[dict[str, str]
             raw_html = page.get("rawHtml") if isinstance(page, dict) else None
             if isinstance(raw_html, str) and raw_html:
                 pages.append({"stage": f"{collection_name}[{index}]", "html": raw_html})
+    return pages
+
+
+def _prompt_raw_html_from_run_result(
+    run_result: dict[str, Any],
+    case_plan: dict[str, Any] | None,
+) -> list[dict[str, str]]:
+    auto_creq = run_result.get("autoCreq")
+    if not isinstance(auto_creq, dict):
+        return []
+    actions = [str(action.get("type") or "") for action in (case_plan or {}).get("actions") or []]
+    if "submit_otp" in actions:
+        pages = _submission_raw_html(auto_creq, "otpSubmission", "otpSubmissions")
+        return pages or _raw_html_from_run_result(run_result)
+    if "resend_otp" in actions or "resend_until_limit" in actions:
+        pages = _submission_raw_html(auto_creq, "resendSubmission", "resendSubmissions")
+        return pages or _raw_html_from_run_result(run_result)
+    return _raw_html_from_run_result(run_result)
+
+
+def _submission_raw_html(
+    auto_creq: dict[str, Any],
+    latest_key: str,
+    collection_key: str,
+) -> list[dict[str, str]]:
+    pages: list[dict[str, str]] = []
+    latest = auto_creq.get(latest_key)
+    latest_page = latest.get("challenge") if isinstance(latest, dict) else None
+    raw_html = latest_page.get("rawHtml") if isinstance(latest_page, dict) else None
+    if isinstance(raw_html, str) and raw_html:
+        pages.append({"stage": latest_key, "html": raw_html})
+    for index, submission in enumerate(auto_creq.get(collection_key) or []):
+        page = submission.get("challenge") if isinstance(submission, dict) else None
+        raw_html = page.get("rawHtml") if isinstance(page, dict) else None
+        if isinstance(raw_html, str) and raw_html:
+            pages.append({"stage": f"{collection_key}[{index}]", "html": raw_html})
     return pages
 
 
@@ -1489,6 +1753,7 @@ def _is_invalid_card_case(case: dict[str, Any]) -> bool:
 def _case_plan_for_issuer_mode(
     case: dict[str, Any],
     issuer_mode: dict[str, Any],
+    preferred_challenge: str = "auto",
 ) -> dict[str, Any] | None:
     if issuer_mode.get("id") in {
         "sms_otp",
@@ -1500,7 +1765,7 @@ def _case_plan_for_issuer_mode(
         "selection_email_oob",
         "default_oob_can_switch_otp",
     }:
-        return build_case_plan(case, issuer_mode)
+        return build_case_plan(case, issuer_mode, preferred_challenge=preferred_challenge)
     return None
 
 
@@ -1637,6 +1902,8 @@ def _post_creq(
     response["preferredChallenge"] = preferred_challenge
 
     if generated_actions:
+        otp_lookup_cache: dict[tuple[str, str, str, str], tuple[str, dict[str, Any]]] = {}
+
         def submit_form(
             current_page: dict[str, Any], overrides: dict[str, str]
         ) -> dict[str, Any]:
@@ -1655,6 +1922,7 @@ def _post_creq(
                 acs_trans_id,
                 otp_settings,
                 timeout_seconds,
+                otp_lookup_cache,
             )
 
         outcome = execute_generated_actions(
@@ -1858,6 +2126,7 @@ def _advance_challenge_response(
     if page["type"] == "otp" and auto_submit_otp and otp_attempts:
         current_page = page
         completed = False
+        otp_lookup_cache: dict[tuple[str, str, str, str], tuple[str, dict[str, Any]]] = {}
         for purpose in otp_attempts:
             max_attempts = (
                 2
@@ -1877,6 +2146,7 @@ def _advance_challenge_response(
                     acs_trans_id,
                     otp_settings,
                     timeout_seconds,
+                    otp_lookup_cache,
                 )
                 otp_response = _submit_challenge_form(
                     current_page,
@@ -2143,19 +2413,36 @@ def _read_otp_settings(envelope: dict[str, Any]) -> OtpSettings:
     )
 
 
+def _read_transaction_result_url(envelope: dict[str, Any]) -> str:
+    return str(envelope.get("transactionResultUrl") or DEFAULT_TRANSACTION_RESULT_URL)
+
+
 def _resolve_otp_submission_value(
     purpose: str,
     acs_trans_id: str,
     otp_settings: OtpSettings,
     timeout_seconds: int,
+    otp_lookup_cache: dict[tuple[str, str, str, str], tuple[str, dict[str, Any]]] | None = None,
 ) -> tuple[str, dict[str, Any]]:
     normalized_purpose = (purpose or "success").strip()
     if normalized_purpose == "success" and otp_settings.source_mode == "acs_generated":
-        return lookup_acs_generated_otp(
+        cache_key = (
+            otp_settings.source_mode,
+            otp_settings.lookup_url_template,
+            normalized_purpose,
+            acs_trans_id,
+        )
+        if otp_lookup_cache is not None and cache_key in otp_lookup_cache:
+            cached_value, cached_lookup = otp_lookup_cache[cache_key]
+            return cached_value, deepcopy(cached_lookup)
+        otp_value, otp_lookup = lookup_acs_generated_otp(
             acs_trans_id,
             otp_settings,
             timeout_seconds=timeout_seconds,
         )
+        if otp_lookup_cache is not None:
+            otp_lookup_cache[cache_key] = (otp_value, deepcopy(otp_lookup))
+        return otp_value, otp_lookup
     otp_value = resolve_otp_value(normalized_purpose, acs_trans_id, otp_settings)
     return otp_value, {
         "source": "configured" if otp_settings.source_mode == "customer_generated" else "direct",

@@ -331,6 +331,24 @@ def _normalized_profiles(*, omit_code=None):
     }
 
 
+def _normalized_stage_wordings(issuer_mode, source_sheet, category, code, locale, fields):
+    return [
+        {
+            "issuerId": "default",
+            "issuerMode": issuer_mode,
+            "deviceChannel": "BROWSER",
+            "messageCategory": category,
+            "sourceSheet": source_sheet,
+            "wordingCode": code,
+            "locale": locale,
+            "fieldKey": field_key,
+            "content": content,
+            "placeholders": [],
+        }
+        for field_key, content in fields.items()
+    ]
+
+
 def _source_templates():
     return [
         {
@@ -527,8 +545,267 @@ def test_browser_catalog_replaces_legacy_localized_cases_when_profile_exists(tmp
         "enabled": True,
         "issuerId": "default",
         "issuerMode": "direct_otp",
+        "selectedLocale": "all",
+        "selectedPreferredChallenge": "auto",
         "supportedLocales": list(DEFAULT_SUPPORTED_LOCALES),
     }
+
+
+def test_browser_catalog_can_generate_english_only_wording_cases(tmp_path):
+    profile_path = tmp_path / "wording_profiles.json"
+    profile_path.write_text(json.dumps(_normalized_profiles()), encoding="utf-8")
+
+    catalog = load_browser_case_catalog(
+        progress_path=tmp_path / "missing-progress.json",
+        wording_profiles_path=profile_path,
+        issuer_id="default",
+        issuer_mode="direct_otp",
+        wording_locale="en_US",
+    )
+
+    generated = [case for case in catalog["cases"] if case.get("wording")]
+    assert generated
+    assert {case["locale"] for case in generated} == {"en_US"}
+    assert "case23_en_US" in {case["id"] for case in generated}
+    assert catalog["wordingProfile"]["selectedLocale"] == "en_US"
+    assert catalog["wordingProfile"]["supportedLocales"] == list(DEFAULT_SUPPORTED_LOCALES)
+
+
+def test_normalized_direct_oob_wording_generates_enabled_oob_cases(tmp_path):
+    profiles = {
+        "sourceFormat": "normalized",
+        "defaultSupportedLocales": ["en_US"],
+        "issuers": {
+            "default": {
+                "id": "default",
+                "name": "Default Issuer",
+                "defaultLocale": "en_US",
+                "issuerModes": ["direct_oob"],
+                "supportedLocales": ["en_US"],
+            }
+        },
+        "wordings": [
+            {
+                "issuerId": "default",
+                "issuerMode": "direct_oob",
+                "deviceChannel": "BROWSER",
+                "messageCategory": "PA",
+                "sourceSheet": "OOB",
+                "wordingCode": "INIT_OOB",
+                "locale": "en_US",
+                "fieldKey": "challenge_title",
+                "content": "Approve transaction",
+                "placeholders": [],
+            },
+            {
+                "issuerId": "default",
+                "issuerMode": "direct_oob",
+                "deviceChannel": "BROWSER",
+                "messageCategory": "PA",
+                "sourceSheet": "OOB",
+                "wordingCode": "INIT_OOB",
+                "locale": "en_US",
+                "fieldKey": "challenge_message",
+                "content": "Open your app to approve this payment.",
+                "placeholders": [],
+            },
+            {
+                "issuerId": "default",
+                "issuerMode": "direct_oob",
+                "deviceChannel": "BROWSER",
+                "messageCategory": "PA",
+                "sourceSheet": "OOB",
+                "wordingCode": "INIT_OOB",
+                "locale": "en_US",
+                "fieldKey": "continue_oob_button",
+                "content": "Continue",
+                "placeholders": [],
+            },
+        ],
+    }
+    profile_path = tmp_path / "wording_profiles.json"
+    profile_path.write_text(json.dumps(profiles), encoding="utf-8")
+
+    catalog = load_browser_case_catalog(
+        progress_path=tmp_path / "missing-progress.json",
+        wording_profiles_path=profile_path,
+        issuer_id="default",
+        issuer_mode="direct_oob",
+    )
+
+    generated = [case for case in catalog["cases"] if case.get("wording")]
+    assert len(generated) == 1
+    case = generated[0]
+    assert case["flow"]["kind"] == "direct"
+    assert case["flow"]["destination"] == "oob"
+    assert case["wording"]["code"] == "INIT_OOB"
+    assert case["availability"] == {"enabled": True, "reason": ""}
+    assert case["caseImplementation"]["status"] == "completed"
+    assert case["expected"]["stageUiFields"]["oob"] == {
+        "challenge_title": "Approve transaction",
+        "challenge_message": "Open your app to approve this payment.",
+        "continue_oob_button": "Continue",
+    }
+
+
+def test_normalized_selection_oob_wording_generates_selection_and_oob_branch(tmp_path):
+    profiles = {
+        "sourceFormat": "normalized",
+        "defaultSupportedLocales": ["en_US"],
+        "issuers": {
+            "default": {
+                "id": "default",
+                "name": "Default Issuer",
+                "defaultLocale": "en_US",
+                "issuerModes": ["selection_sms_oob"],
+                "supportedLocales": ["en_US"],
+            }
+        },
+        "wordings": [
+            *_normalized_stage_wordings(
+                "selection_sms_otp",
+                "Single Select",
+                "PA",
+                "SINGLE_SELECT",
+                "en_US",
+                {"challenge_title": "Authentication mode", "challenge_message": "Choose a method"},
+            ),
+            *_normalized_stage_wordings(
+                "direct_oob",
+                "OOB",
+                "PA",
+                "INIT_OOB",
+                "en_US",
+                {"challenge_title": "Approve transaction", "challenge_message": "Approve in app"},
+            ),
+        ],
+    }
+    profile_path = tmp_path / "wording_profiles.json"
+    profile_path.write_text(json.dumps(profiles), encoding="utf-8")
+
+    catalog = load_browser_case_catalog(
+        progress_path=tmp_path / "missing-progress.json",
+        wording_profiles_path=profile_path,
+        issuer_id="default",
+        issuer_mode="selection_sms_oob",
+    )
+
+    generated = {case["flow"]["kind"]: case for case in catalog["cases"] if case.get("wording")}
+    assert generated["selection_page"]["availability"]["enabled"] is True
+    assert generated["selection_branch"]["flow"]["destination"] == "oob"
+    assert generated["selection_branch"]["availability"]["enabled"] is True
+    assert generated["selection_branch"]["caseImplementation"]["status"] == "completed"
+
+
+def test_preferred_oob_filters_selection_wording_cases_to_oob_branch(tmp_path):
+    profiles = {
+        "sourceFormat": "normalized",
+        "defaultSupportedLocales": ["en_US"],
+        "issuers": {
+            "default": {
+                "id": "default",
+                "name": "Default Issuer",
+                "defaultLocale": "en_US",
+                "issuerModes": ["selection_sms_oob"],
+                "supportedLocales": ["en_US"],
+            }
+        },
+        "wordings": [
+            *_normalized_stage_wordings(
+                "selection_sms_otp",
+                "Single Select",
+                "PA",
+                "SINGLE_SELECT",
+                "en_US",
+                {"challenge_title": "Authentication mode", "challenge_message": "Choose a method"},
+            ),
+            *_normalized_stage_wordings(
+                "sms_otp",
+                "SMS",
+                "PA",
+                "SEND_SMS_OTP",
+                "en_US",
+                {"challenge_title": "SMS challenge", "challenge_message": "Enter SMS OTP"},
+            ),
+            *_normalized_stage_wordings(
+                "direct_oob",
+                "OOB",
+                "PA",
+                "INIT_OOB",
+                "en_US",
+                {"challenge_title": "Approve transaction", "challenge_message": "Approve in app"},
+            ),
+        ],
+    }
+    profile_path = tmp_path / "wording_profiles.json"
+    profile_path.write_text(json.dumps(profiles), encoding="utf-8")
+
+    catalog = load_browser_case_catalog(
+        progress_path=tmp_path / "missing-progress.json",
+        wording_profiles_path=profile_path,
+        issuer_id="default",
+        issuer_mode="selection_sms_oob",
+        preferred_challenge="oob",
+    )
+
+    generated_destinations = {
+        (case.get("flow") or {}).get("destination")
+        for case in catalog["cases"]
+        if case.get("wording") and (case.get("flow") or {}).get("kind") == "selection_branch"
+    }
+    assert generated_destinations == {"oob"}
+
+
+def test_normalized_oob_switch_wording_generates_switch_to_sms_case(tmp_path):
+    profiles = {
+        "sourceFormat": "normalized",
+        "defaultSupportedLocales": ["en_US"],
+        "issuers": {
+            "default": {
+                "id": "default",
+                "name": "Default Issuer",
+                "defaultLocale": "en_US",
+                "issuerModes": ["default_oob_can_switch_otp"],
+                "supportedLocales": ["en_US"],
+            }
+        },
+        "wordings": [
+            *_normalized_stage_wordings(
+                "direct_oob",
+                "OOB",
+                "PA",
+                "INIT_OOB",
+                "en_US",
+                {"challenge_title": "Approve transaction", "challenge_message": "Approve in app"},
+            ),
+            *_normalized_stage_wordings(
+                "direct_otp",
+                "SMS",
+                "PA",
+                "SEND_SMS_OTP",
+                "en_US",
+                {"challenge_title": "SMS OTP", "challenge_message": "Enter SMS OTP"},
+            ),
+        ],
+    }
+    profile_path = tmp_path / "wording_profiles.json"
+    profile_path.write_text(json.dumps(profiles), encoding="utf-8")
+
+    catalog = load_browser_case_catalog(
+        progress_path=tmp_path / "missing-progress.json",
+        wording_profiles_path=profile_path,
+        issuer_id="default",
+        issuer_mode="default_oob_can_switch_otp",
+    )
+
+    generated = [case for case in catalog["cases"] if case.get("wording")]
+    assert len(generated) == 1
+    case = generated[0]
+    assert case["flow"]["kind"] == "oob_switch_sms"
+    assert case["flow"]["switchCreq"] is True
+    assert [stage["type"] for stage in case["flow"]["stages"]] == ["oob", "sms"]
+    assert case["availability"]["enabled"] is True
+    assert case["caseImplementation"]["status"] == "completed"
 
 
 def test_browser_catalog_preserves_raw_case_flow_metadata(tmp_path):

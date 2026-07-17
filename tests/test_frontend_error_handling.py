@@ -22,10 +22,13 @@ def test_frontend_has_sit_runner_tab_and_controls():
     index_html = Path("static/index.html").read_text(encoding="utf-8")
     app_js = Path("static/app.js").read_text(encoding="utf-8")
 
-    assert 'data-tab="sitRunner"' in index_html
+    assert 'class="tab-bar"' not in index_html
+    assert 'class="tab-button' not in index_html
     assert 'id="caseList"' in index_html
     assert 'id="runSelectedCases"' in index_html
     assert 'id="runAllCases"' in index_html
+    assert 'id="caseAdvancedPanel"' in index_html
+    assert 'data-case-view="caseAdvancedPanel"' in index_html
     assert 'id="issuerMode"' in index_html
     for mode_id in (
         "sms_otp",
@@ -44,9 +47,11 @@ def test_frontend_has_sit_runner_tab_and_controls():
     assert 'id="preferredChallenge"' in index_html
     assert 'id="otpSourceMode"' in index_html
     assert 'id="otpLookupUrl"' in index_html
+    assert 'id="transactionResultUrl"' in index_html
     assert 'id="successOtp"' in index_html
     assert 'id="failureOtp"' in index_html
     assert 'id="sitAreqUrl"' in index_html
+    assert '<label class="wide-setting">\n            SIT AReq URL' in index_html
     assert 'id="validCardNumber"' in index_html
     assert 'id="invalidCardNumber"' in index_html
     assert 'id="otpFailureMaxAttempts"' in index_html
@@ -61,8 +66,10 @@ def test_frontend_has_sit_runner_tab_and_controls():
     assert "issuerMode:" in app_js
     assert '|| "sms_otp"' in app_js
     assert "preferredChallenge:" in app_js
+    assert 'preferredChallenge: preferredChallengeInput?.value || "auto"' in app_js
     assert "otpSourceMode:" in app_js
     assert "otpLookupUrl:" in app_js
+    assert "transactionResultUrl:" in app_js
     assert "successOtp:" in app_js
     assert "failureOtp:" in app_js
     assert "validCardNumber:" in app_js
@@ -73,6 +80,26 @@ def test_frontend_has_sit_runner_tab_and_controls():
     assert "otpExpiryWaitSeconds:" in app_js
     assert 'includeSlowCasesInput?.addEventListener("change"' in app_js
     assert "renderSitRunSummary" in app_js
+    assert 'classList.toggle("advanced-active"' in app_js
+
+
+def test_preferred_challenge_uses_switch_to_otp_label():
+    index_html = Path("static/index.html").read_text(encoding="utf-8")
+    app_js = Path("static/app.js").read_text(encoding="utf-8")
+
+    assert '<option value="otp">Switch to OTP</option>' in index_html
+    assert 'otp: "Switch to OTP"' in app_js
+
+
+def test_preferred_challenge_is_guarded_for_single_destination_modes():
+    app_js = Path("static/app.js").read_text(encoding="utf-8")
+
+    assert "function updatePreferredChallengeGuard" in app_js
+    assert "mode.requiresPreferredChallenge === false" in app_js
+    assert 'preferredChallengeInput.value = "auto"' in app_js
+    assert "preferredChallengeInput.disabled = true" in app_js
+    assert 'preferredChallengeInput?.addEventListener("change", async () => {' in app_js
+    assert "await loadSitCases()" in app_js
 
 
 def test_frontend_imports_wording_profiles_and_disables_unavailable_cases():
@@ -97,6 +124,12 @@ def test_frontend_imports_wording_profiles_and_disables_unavailable_cases():
     assert ":not(:disabled)" in app_js
     assert ".wording-import-controls" in styles
     assert ".case-unavailable-reason" in styles
+    assert 'id="wordingLocale"' in index_html
+    assert '<option value="all"' in index_html
+    assert '<option value="en_US"' in index_html
+    assert "wordingLocaleInput" in app_js
+    assert "wordingLocale:" in app_js
+    assert 'wordingLocaleInput?.addEventListener("change"' in app_js
     assert 'issuerModeInput?.addEventListener("change", reloadCasesForIssuerMode)' in app_js
     assert 'class="wide-setting"' in index_html
     assert ".wide-setting" in styles
@@ -110,6 +143,7 @@ def test_sit_controls_use_execution_and_settings_sidebar():
 
     assert 'data-case-view="caseExecutionPanel"' in index_html
     assert 'data-case-view="caseSettingsPanel"' in index_html
+    assert 'data-case-view="caseAdvancedPanel"' in index_html
     assert 'id="caseExecutionPanel"' in index_html
     assert 'id="caseSettingsPanel"' in index_html
     assert 'id="caseProgressSummary"' not in index_html
@@ -117,6 +151,8 @@ def test_sit_controls_use_execution_and_settings_sidebar():
     assert "function setCaseControlView" in app_js
     assert ".case-sidebar" in styles
     assert ".case-control-view:not(.active)" in styles
+    assert ".sit-workspace.advanced-active" in styles
+    assert ".advanced-active .case-detail-panel" in styles
 
 
 def test_select_all_checkbox_is_larger_than_case_checkboxes():
@@ -132,8 +168,8 @@ def test_frontend_uses_chinese_visible_labels():
     index_html = Path("static/index.html").read_text(encoding="utf-8")
     app_js = Path("static/app.js").read_text(encoding="utf-8")
 
-    assert "手動交易" in index_html
-    assert "SIT 測試" in index_html
+    assert "進階工具" in index_html
+    assert "執行案例" in index_html
     assert "送出 AReq" in index_html
     assert "執行選取案例" in index_html
     assert "發卡行模式" in index_html
@@ -142,11 +178,15 @@ def test_frontend_uses_chinese_visible_labels():
     assert "通過" in app_js
 
 
-def test_tab_panel_hidden_rule_overrides_workspace_layout():
+def test_manual_runner_is_nested_as_an_advanced_tool():
+    index_html = Path("static/index.html").read_text(encoding="utf-8")
+    app_js = Path("static/app.js").read_text(encoding="utf-8")
     styles = Path("static/styles.css").read_text(encoding="utf-8")
 
-    assert ".tab-panel:not(.active)" in styles
-    assert styles.rfind(".tab-panel:not(.active)") > styles.rfind(".sit-workspace")
+    assert 'id="manualRunner"' not in index_html
+    assert 'id="caseAdvancedPanel" class="workspace case-control-view advanced-tools-view"' in index_html
+    assert 'casePanelContentEl?.appendChild(caseAdvancedPanelEl)' in app_js
+    assert ".advanced-tools-view" in styles
 
 
 def test_sit_case_detail_orders_description_steps_and_result_comparison():
@@ -187,8 +227,12 @@ def test_frontend_renders_actual_results_and_red_differences():
     styles = Path("static/styles.css").read_text(encoding="utf-8")
 
     assert "function actualResultForCase" in app_js
+    assert "function promptVisibleTextSummary" in app_js
     assert "function collectResultDifferences" in app_js
     assert "function renderResultDifferences" in app_js
+    assert "actualKeywords: promptVisibleTextSummary(details.prompt)" in app_js
+    assert "const actualPromptText = promptVisibleTextSummary(details.prompt)" in app_js
+    assert "emptyOtpValidation: details.emptyOtpValidation" in app_js
     assert 'className = "difference-item"' in app_js
     assert "textContent" in app_js
     assert ".difference-item" in styles
@@ -199,9 +243,30 @@ def test_frontend_renders_actual_results_and_red_differences():
 def test_frontend_shows_compact_excel_field_results_and_collapsed_technical_details():
     index_html = Path("static/index.html").read_text(encoding="utf-8")
     app_js = Path("static/app.js").read_text(encoding="utf-8")
+    styles = Path("static/styles.css").read_text(encoding="utf-8")
 
     assert "function expectedResultForCase" in app_js
     assert "function promptFieldSummary" in app_js
+    assert "function collectTechnicalRequests" in app_js
+    assert "function dedupeTechnicalRequests" in app_js
+    assert "function technicalRequestOrder" in app_js
+    assert "function renderTechnicalDetails" in app_js
+    assert "return dedupeTechnicalRequests(requests).sort" in app_js
+    assert "title.textContent = `${index + 1}. ${request.label}`" in app_js
+    assert 'url.className = "request-url"' in app_js
+    assert 'url.textContent = request.url || "-"' in app_js
+    assert "meta.textContent = `${request.label} · ${request.method}${request.status ? ` -> ${request.status}` : \"\"}`" in app_js
+    assert "if (value.form || value.cres)" not in app_js
+    assert 'addTechnicalRequest(requests, "Notification", null' not in app_js
+    assert 'addTechnicalRequest(requests, "Notification", value.notification.http)' not in app_js
+    assert 'notification: "Notification"' not in app_js
+    assert '"AReq"' in app_js
+    assert '"CReq"' in app_js
+    assert 'otpSubmission: "OTP Submit"' in app_js
+    assert 'otpSubmissions: "OTP Submit"' in app_js
+    assert 'id="caseRequestTimeline"' in index_html
+    assert ".request-timeline" in styles
+    assert ".request-item" in styles
     assert 'rawHtml' not in app_js[app_js.index("function actualResultForCase"):app_js.index("function differenceValue")]
     assert '<details class="case-run-details">' in index_html
     assert '<details class="case-run-details" open>' not in index_html

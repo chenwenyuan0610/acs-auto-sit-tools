@@ -14,10 +14,11 @@ const aresOutput = document.querySelector("#aresOutput");
 const cresOutput = document.querySelector("#cresOutput");
 const notificationOutput = document.querySelector("#notificationOutput");
 const evidenceOutput = document.querySelector("#evidenceOutput");
-const tabButtons = document.querySelectorAll(".tab-button");
-const tabPanels = document.querySelectorAll(".tab-panel");
 const caseViewButtons = document.querySelectorAll("[data-case-view]");
 const caseViewPanels = document.querySelectorAll(".case-control-view");
+const sitWorkspaceEl = document.querySelector("#sitRunner");
+const casePanelContentEl = document.querySelector(".case-panel-content");
+const caseAdvancedPanelEl = document.querySelector("#caseAdvancedPanel");
 const caseListEl = document.querySelector("#caseList");
 const caseCountEl = document.querySelector("#caseCount");
 const selectAllCasesInput = document.querySelector("#selectAllCases");
@@ -25,12 +26,14 @@ const runSelectedCasesButton = document.querySelector("#runSelectedCases");
 const runAllCasesButton = document.querySelector("#runAllCases");
 const issuerModeInput = document.querySelector("#issuerMode");
 const issuerProfileInput = document.querySelector("#issuerProfile");
+const wordingLocaleInput = document.querySelector("#wordingLocale");
 const wordingWorkbookInput = document.querySelector("#wordingWorkbook");
 const importWordingWorkbookButton = document.querySelector("#importWordingWorkbook");
 const wordingImportStatusEl = document.querySelector("#wordingImportStatus");
 const preferredChallengeInput = document.querySelector("#preferredChallenge");
 const otpSourceModeInput = document.querySelector("#otpSourceMode");
 const otpLookupUrlInput = document.querySelector("#otpLookupUrl");
+const transactionResultUrlInput = document.querySelector("#transactionResultUrl");
 const successOtpInput = document.querySelector("#successOtp");
 const failureOtpInput = document.querySelector("#failureOtp");
 const sitAreqUrlInput = document.querySelector("#sitAreqUrl");
@@ -52,6 +55,7 @@ const caseStepsListEl = document.querySelector("#caseStepsList");
 const caseExpectedOutput = document.querySelector("#caseExpectedOutput");
 const caseActualOutput = document.querySelector("#caseActualOutput");
 const caseDiffOutput = document.querySelector("#caseDiffOutput");
+const caseRequestTimeline = document.querySelector("#caseRequestTimeline");
 const caseRunOutput = document.querySelector("#caseRunOutput");
 
 let evidence = [];
@@ -119,6 +123,7 @@ function actualResultForCase(result) {
     ? {
         fields: promptFieldSummary(details.prompt),
         missing: details.prompt.missing || [],
+        actualKeywords: promptVisibleTextSummary(details.prompt),
       }
     : undefined;
 
@@ -127,6 +132,7 @@ function actualResultForCase(result) {
       status: statusLabel(result.status),
       reason: result.reason || undefined,
       wordingFields: prompt.fields,
+      promptActualKeywords: prompt.actualKeywords,
     };
   }
   const transactions = Array.isArray(details.transactions)
@@ -146,11 +152,19 @@ function actualResultForCase(result) {
       CRes: details.cres,
       notification: details.notification?.notification ?? details.notification,
       prompt,
+      emptyOtpValidation: details.emptyOtpValidation,
       transactions,
       resendLimit: details.resendLimit,
       error: details.errorMatch?.actual ?? details.error,
     }).filter(([, value]) => value !== undefined && value !== null)
   );
+}
+
+function promptVisibleTextSummary(prompt) {
+  return (prompt?.visibleText || [])
+    .map((item) => String(item || "").trim())
+    .filter(Boolean)
+    .slice(0, 12);
 }
 
 function promptFieldSummary(prompt) {
@@ -218,7 +232,12 @@ function collectResultDifferences(result) {
   }
 
   for (const prompt of details.prompt?.missing || []) {
-    addDifference({ label: "缺少預期文字", expected: prompt, actual: "實際頁面未找到" });
+    const actualPromptText = promptVisibleTextSummary(details.prompt).join(" | ");
+    addDifference({
+      label: "缺少預期文字",
+      expected: prompt,
+      actual: actualPromptText || "實際頁面未找到",
+    });
   }
 
   const errorAliases = {
@@ -295,6 +314,179 @@ function renderResultDifferences(result) {
   caseActualOutput.classList.toggle("has-differences", hasDifferences);
 }
 
+function requestUrlFromHttp(http) {
+  return http?.url || http?.request_url || http?.requestUrl || "";
+}
+
+function requestBodyFromHttp(http) {
+  return http?.request_body ?? http?.requestBody ?? http?.body ?? null;
+}
+
+function responseBodyFromHttp(http) {
+  return http?.response_json ?? http?.response_body ?? http?.response_text ?? null;
+}
+
+function addTechnicalRequest(requests, label, http, extra = {}) {
+  if (!http && !extra.body && !extra.response) {
+    return;
+  }
+  requests.push({
+    label,
+    method: extra.method || http?.method || "POST",
+    url: extra.url || requestUrlFromHttp(http) || "-",
+    status: http?.status ?? http?.status_code ?? extra.status ?? "",
+    body: extra.body ?? requestBodyFromHttp(http),
+    response: extra.response ?? responseBodyFromHttp(http),
+    sequence: requests.length,
+  });
+}
+
+function technicalRequestOrder(request) {
+  const label = String(request.label || "");
+  if (label.includes("AReq")) {
+    return 10;
+  }
+  if (label.includes("CReq") || label.includes("選擇")) {
+    return 20;
+  }
+  if (label.includes("OTP") || label.includes("OOB") || label.includes("Cancel")) {
+    return 30;
+  }
+  if (label.includes("Transaction Result")) {
+    return 50;
+  }
+  return 90;
+}
+
+function technicalRequestKey(request) {
+  return JSON.stringify({
+    label: request.label,
+    method: request.method,
+    url: request.url,
+    body: request.body ?? null,
+  });
+}
+
+function dedupeTechnicalRequests(requests) {
+  const seen = new Set();
+  const unique = [];
+  for (const request of requests) {
+    const key = technicalRequestKey(request);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    unique.push(request);
+  }
+  return unique;
+}
+
+function collectTechnicalRequests(result) {
+  if (!result) {
+    return [];
+  }
+  const details = result.details || {};
+  const requests = [];
+  const visited = new Set();
+  const scan = (value, labelHint = "Request") => {
+    if (!value || typeof value !== "object" || visited.has(value)) {
+      return;
+    }
+    visited.add(value);
+
+    if (value.http) {
+      const messageType = requestBodyFromHttp(value.http)?.messageType;
+      addTechnicalRequest(requests, messageType || labelHint, value.http);
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (["ares", "cres", "expected", "prompt", "casePlan", "caseAreq", "notification"].includes(key)) {
+        continue;
+      }
+      const label = {
+        smsSelection: "CReq 選擇驗證方式",
+        oobSubmission: "OOB Submit",
+        otpSubmission: "OTP Submit",
+        otpSubmissions: "OTP Submit",
+        resendSubmission: "OTP Resend",
+        resendSubmissions: "OTP Resend",
+        cancelSubmission: "Cancel Submit",
+        challengeFlow: "CReq",
+        transactionResult: "Transaction Result Lookup",
+        lookup: "Transaction Result Lookup",
+      }[key] || labelHint;
+      scan(child, label);
+    }
+  };
+
+  if (details.caseAreq?.actualRequestBody) {
+    addTechnicalRequest(requests, "AReq", null, {
+      body: details.caseAreq.actualRequestBody,
+      response: details.ares,
+    });
+  }
+  for (const transaction of details.transactions || []) {
+    if (transaction.actualRequestBody) {
+      addTechnicalRequest(requests, transaction.label || "AReq", null, {
+        body: transaction.actualRequestBody,
+        response: transaction.ares || transaction.cres || transaction.notification,
+      });
+    }
+    scan(transaction, transaction.label || "Transaction");
+  }
+  scan(details, "AReq");
+  return dedupeTechnicalRequests(requests).sort(
+    (left, right) =>
+      technicalRequestOrder(left) - technicalRequestOrder(right) ||
+      left.sequence - right.sequence
+  );
+}
+
+function renderTechnicalDetails(result, caseItem) {
+  if (!caseRequestTimeline) {
+    return;
+  }
+  const requests = collectTechnicalRequests(result);
+  caseRequestTimeline.replaceChildren();
+  if (!requests.length) {
+    const empty = document.createElement("p");
+    empty.className = "request-empty";
+    empty.textContent = "尚未有請求紀錄";
+    caseRequestTimeline.appendChild(empty);
+  } else {
+    requests.forEach((request, index) => {
+      const item = document.createElement("article");
+      item.className = "request-item";
+
+      const title = document.createElement("h4");
+      title.textContent = `${index + 1}. ${request.label}`;
+      item.appendChild(title);
+
+      const url = document.createElement("p");
+      url.className = "request-url";
+      url.textContent = request.url || "-";
+      item.appendChild(url);
+
+      const meta = document.createElement("p");
+      meta.className = "request-meta";
+      meta.textContent = `${request.label} · ${request.method}${request.status ? ` -> ${request.status}` : ""}`;
+      item.appendChild(meta);
+
+      const body = document.createElement("pre");
+      body.textContent = pretty({
+        request: request.body ?? {},
+        response: request.response ?? {},
+      });
+      item.appendChild(body);
+
+      caseRequestTimeline.appendChild(item);
+    });
+  }
+  caseRunOutput.textContent = pretty(result || {
+    message: "尚未執行",
+    automation: caseItem.automation,
+  });
+}
+
 function setStatus(text, isError = false) {
   statusEl.textContent = text;
   statusEl.classList.toggle("error", isError);
@@ -367,6 +559,9 @@ function readCommonEnvelope(url, payload) {
     otpLookupUrl:
       otpLookupUrlInput?.value ||
       "https://acscloud-test.hitrust-us.com/acs-sit-info/api/sit/otp/{acsTrandId}",
+    transactionResultUrl:
+      transactionResultUrlInput?.value ||
+      "https://acscloud-test.hitrust-us.com/acs-sit-info/api/sit/transaction/{acsTransID}",
     successOtp: successOtpInput?.value || simulatedOtpInput?.value || "123456",
     failureOtp: failureOtpInput?.value || "000000",
     validCardNumber: validCardNumberInput?.value || "",
@@ -384,15 +579,6 @@ includeSlowCasesInput?.addEventListener("change", () => {
   }
 });
 
-function setActiveTab(tabId) {
-  tabButtons.forEach((button) => {
-    button.classList.toggle("active", button.dataset.tab === tabId);
-  });
-  tabPanels.forEach((panel) => {
-    panel.classList.toggle("active", panel.id === tabId);
-  });
-}
-
 function setCaseControlView(viewId) {
   caseViewButtons.forEach((button) => {
     const active = button.dataset.caseView === viewId;
@@ -404,6 +590,7 @@ function setCaseControlView(viewId) {
     panel.classList.toggle("active", active);
     panel.hidden = !active;
   });
+  sitWorkspaceEl?.classList.toggle("advanced-active", viewId === "caseAdvancedPanel");
 }
 
 function statusLabel(status) {
@@ -442,9 +629,41 @@ function preferredChallengeLabel(challenge) {
     sms: "SMS",
     email: "Email",
     oob: "OOB",
-    otp: "OTP",
+    otp: "Switch to OTP",
   };
   return labels[challenge.id] || challenge.label || challenge.id;
+}
+
+function selectedIssuerMode() {
+  return issuerModes.find((mode) => mode.id === issuerModeInput?.value) || null;
+}
+
+function preferredChallengeAllowed(mode, value) {
+  if (!mode || value === "auto") {
+    return true;
+  }
+  if (value === "otp" && mode.switchDestination) {
+    return true;
+  }
+  return (mode.destinations || []).includes(value);
+}
+
+function updatePreferredChallengeGuard() {
+  if (!issuerModeInput || !preferredChallengeInput) {
+    return;
+  }
+  const mode = selectedIssuerMode();
+  if (mode && mode.requiresPreferredChallenge === false) {
+    preferredChallengeInput.value = "auto";
+    preferredChallengeInput.disabled = true;
+    preferredChallengeInput.title = "Preferred challenge is not applicable for this issuer mode.";
+    return;
+  }
+  preferredChallengeInput.disabled = false;
+  preferredChallengeInput.title = "";
+  if (!preferredChallengeAllowed(mode, preferredChallengeInput.value)) {
+    preferredChallengeInput.value = mode?.defaultPreferredChallenge || "auto";
+  }
 }
 
 function renderCaseList() {
@@ -514,6 +733,7 @@ function selectCase(caseId) {
   caseExpectedOutput.textContent = pretty(expectedResultForCase(caseItem));
   caseActualOutput.textContent = pretty(actualResultForCase(result));
   renderResultDifferences(result);
+  renderTechnicalDetails(result, caseItem);
   caseRunOutput.textContent = pretty(result || {
     message: "尚未執行",
     automation: caseItem.automation,
@@ -550,6 +770,8 @@ async function loadSitCases() {
     const params = new URLSearchParams({
       issuerId: issuerProfileInput?.value || "default",
       issuerMode: issuerModeInput?.value || "sms_otp",
+      wordingLocale: wordingLocaleInput?.value || "all",
+      preferredChallenge: preferredChallengeInput?.value || "auto",
     });
     const result = await getApi(`/api/sit/browser-cases?${params}`);
     sitCases = result.cases || [];
@@ -572,6 +794,8 @@ async function loadWordingProfiles(preferredIssuerId = issuerProfileInput?.value
     const params = new URLSearchParams({
       issuerId: preferredIssuerId,
       issuerMode: issuerModeInput?.value || "sms_otp",
+      wordingLocale: wordingLocaleInput?.value || "all",
+      preferredChallenge: preferredChallengeInput?.value || "auto",
     });
     const result = await getApi(`/api/sit/wording-profiles?${params}`);
     const issuers = result.issuers || [];
@@ -621,6 +845,7 @@ async function importWordingWorkbook() {
       contentBase64: arrayBufferToBase64(await file.arrayBuffer()),
       issuerId: issuerProfileInput?.value || "default",
       issuerMode: issuerModeInput?.value || "sms_otp",
+      preferredChallenge: preferredChallengeInput?.value || "auto",
     });
     const preferredIssuerId = result.issuers?.[0]?.id || "default";
     await loadWordingProfiles(preferredIssuerId);
@@ -657,6 +882,7 @@ async function loadIssuerModes() {
       preferredChallengeInput.appendChild(option);
     }
     preferredChallengeInput.value = result.defaultPreferredChallenge || "auto";
+    updatePreferredChallengeGuard();
   } catch (error) {
     caseRunOutput.textContent = pretty({ error: error.message });
   }
@@ -679,6 +905,7 @@ async function runSitCases(caseIds) {
     selectCase(selectedCaseId);
   }
   try {
+    updatePreferredChallengeGuard();
     const result = await postApi("/api/sit/run", {
       caseIds,
       mode: "live",
@@ -713,9 +940,7 @@ function refreshAreqTransactionIds(payload) {
   return payload;
 }
 
-tabButtons.forEach((button) => {
-  button.addEventListener("click", () => setActiveTab(button.dataset.tab));
-});
+casePanelContentEl?.appendChild(caseAdvancedPanelEl);
 
 caseViewButtons.forEach((button) => {
   button.addEventListener("click", () => setCaseControlView(button.dataset.caseView));
@@ -734,12 +959,22 @@ runAllCasesButton?.addEventListener("click", () => runSitCases(
 ));
 
 issuerProfileInput?.addEventListener("change", loadSitCases);
+wordingLocaleInput?.addEventListener("change", async () => {
+  await loadWordingProfiles();
+  await loadSitCases();
+});
 async function reloadCasesForIssuerMode() {
+  updatePreferredChallengeGuard();
   await loadSitCases();
   await loadWordingProfiles();
 }
 
 issuerModeInput?.addEventListener("change", reloadCasesForIssuerMode);
+preferredChallengeInput?.addEventListener("change", async () => {
+  updatePreferredChallengeGuard();
+  await loadWordingProfiles();
+  await loadSitCases();
+});
 importWordingWorkbookButton?.addEventListener("click", importWordingWorkbook);
 
 sendAreqButton.addEventListener("click", async () => {

@@ -62,34 +62,6 @@ p {
   color: var(--danger);
 }
 
-.tab-bar {
-  background: #ffffff;
-  border-bottom: 1px solid var(--line);
-  display: flex;
-  gap: 8px;
-  padding: 10px 16px 0;
-}
-
-.tab-button {
-  border-bottom-left-radius: 0;
-  border-bottom-right-radius: 0;
-  min-height: 34px;
-}
-
-.tab-button.active {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: #ffffff;
-}
-
-.tab-panel {
-  display: none;
-}
-
-.tab-panel.active {
-  display: grid;
-}
-
 .workspace {
   display: grid;
   gap: 16px;
@@ -102,6 +74,17 @@ p {
   gap: 16px;
   grid-template-columns: minmax(360px, 0.72fr) minmax(520px, 1.28fr);
   padding: 16px;
+}
+.sit-workspace.advanced-active {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.advanced-active .case-detail-panel {
+  display: none;
+}
+
+.advanced-tools-view {
+  padding: 0;
 }
 
 .panel {
@@ -509,6 +492,62 @@ h2 {
   padding-top: 14px;
 }
 
+.request-timeline {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0 12px;
+}
+
+.request-empty {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+.request-item {
+  background: #fbfcfd;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.request-item h4 {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.35;
+  margin: 0;
+  padding: 10px 12px 4px;
+  text-transform: none;
+}
+
+.request-meta {
+  color: var(--muted);
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 0 12px 8px;
+}
+
+.request-url {
+  color: #344054;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 0 12px 4px;
+}
+
+.request-item pre {
+  border-top: 1px solid var(--line);
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  padding: 10px 12px;
+}
+
 .case-description-grid {
   display: grid;
   gap: 0;
@@ -684,7 +723,7 @@ h2 {
 
   .case-sidebar-button {
     text-align: center;
-    width: 50%;
+    width: 33.333%;
   }
 
   .app-header {
@@ -702,8 +741,4 @@ h2 {
   .detail-header .case-status {
     align-self: flex-start;
   }
-}
-
-.tab-panel:not(.active) {
-  display: none;
 }

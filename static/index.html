@@ -15,12 +15,7 @@
       <div id="status" class="status-pill">待命</div>
     </header>
 
-    <nav class="tab-bar" aria-label="Workspace tabs">
-      <button class="tab-button active" type="button" data-tab="manualRunner">手動交易</button>
-      <button class="tab-button" type="button" data-tab="sitRunner">SIT 測試</button>
-    </nav>
-
-    <main id="manualRunner" class="workspace tab-panel active">
+    <section id="caseAdvancedPanel" class="workspace case-control-view advanced-tools-view" role="tabpanel" hidden>
       <section class="panel input-panel">
         <div class="toolbar">
           <button id="sendAreq" class="primary" type="button">送出 AReq</button>
@@ -175,14 +170,15 @@
           <textarea id="evidenceOutput" class="evidence" spellcheck="false" readonly></textarea>
         </label>
       </section>
-    </main>
+    </section>
 
-    <main id="sitRunner" class="sit-workspace tab-panel">
+    <main id="sitRunner" class="sit-workspace">
       <section class="panel case-panel">
         <div class="case-panel-shell">
           <nav class="case-sidebar" role="tablist" aria-label="SIT 控制">
             <button class="case-sidebar-button active" type="button" role="tab" aria-selected="true" aria-controls="caseExecutionPanel" data-case-view="caseExecutionPanel">執行案例</button>
             <button class="case-sidebar-button" type="button" role="tab" aria-selected="false" aria-controls="caseSettingsPanel" data-case-view="caseSettingsPanel">設定</button>
+            <button class="case-sidebar-button" type="button" role="tab" aria-selected="false" aria-controls="caseAdvancedPanel" data-case-view="caseAdvancedPanel">進階工具</button>
           </nav>
           <div class="case-panel-content">
             <section id="caseExecutionPanel" class="case-control-view active" role="tabpanel">
@@ -213,13 +209,20 @@
               </select>
             </label>
             <label>
+              話術語言
+              <select id="wordingLocale">
+                <option value="all">全部語言</option>
+                <option value="en_US">English only</option>
+              </select>
+            </label>
+            <label>
               話術 Excel
               <input id="wordingWorkbook" type="file" accept=".xlsx" />
             </label>
             <button id="importWordingWorkbook" type="button">匯入話術</button>
             <p id="wordingImportStatus" class="wording-import-status" role="status">尚未匯入話術設定</p>
           </div>
-          <label>
+          <label class="wide-setting">
             SIT AReq URL
             <input id="sitAreqUrl" spellcheck="false" value="https://acscloud-test.hitrust-us.com/acs-auth-v3/auth/V/220/eff82784-e641-8477-3b5b-f14c2ed2ee10/123/areq" />
           </label>
@@ -267,7 +270,7 @@
               <option value="sms">SMS</option>
               <option value="email">Email</option>
               <option value="oob">OOB</option>
-              <option value="otp">OTP</option>
+              <option value="otp">Switch to OTP</option>
             </select>
           </label>
           <label>
@@ -280,6 +283,10 @@
           <label>
             OTP Lookup URL
             <input id="otpLookupUrl" spellcheck="false" value="https://acscloud-test.hitrust-us.com/acs-sit-info/api/sit/otp/{acsTrandId}" />
+          </label>
+          <label>
+            交易結果 Lookup URL
+            <input id="transactionResultUrl" spellcheck="false" value="https://acscloud-test.hitrust-us.com/acs-sit-info/api/sit/transaction/{acsTransID}" />
           </label>
           <label>
             成功 OTP
@@ -344,11 +351,12 @@
 
         <details class="case-run-details">
           <summary>技術細節</summary>
+          <div id="caseRequestTimeline" class="request-timeline" aria-live="polite"></div>
           <pre id="caseRunOutput" class="raw-result-output"></pre>
         </details>
       </section>
     </main>
 
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=20260716-advanced-tools"></script>
   </body>
 </html>

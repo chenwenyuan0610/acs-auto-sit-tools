@@ -360,9 +360,15 @@ def test_acs_generated_success_otp_retries_once_when_first_submission_stays_on_o
     submissions = []
     sleeps = []
 
-    def resolve_otp(purpose, acs_trans_id, settings, timeout_seconds):
+    def resolve_otp(purpose, acs_trans_id, settings, timeout_seconds, otp_lookup_cache=None):
+        cache_key = (settings.source_mode, settings.lookup_url_template, purpose, acs_trans_id)
+        if otp_lookup_cache is not None and cache_key in otp_lookup_cache:
+            return otp_lookup_cache[cache_key]
         lookups.append((purpose, acs_trans_id))
-        return f"12345{len(lookups)}", {"source": "lookup_api"}
+        resolved = (f"12345{len(lookups)}", {"source": "lookup_api"})
+        if otp_lookup_cache is not None:
+            otp_lookup_cache[cache_key] = resolved
+        return resolved
 
     def submit(current_page, overrides, timeout_seconds):
         submissions.append(overrides["challengeValue"])
@@ -394,8 +400,8 @@ def test_acs_generated_success_otp_retries_once_when_first_submission_stays_on_o
         "auto",
     )
 
-    assert lookups == [("success", "acs-trans-1"), ("success", "acs-trans-1")]
-    assert submissions == ["123451", "123452"]
+    assert lookups == [("success", "acs-trans-1")]
+    assert submissions == ["123451", "123451"]
     assert sleeps == [1.0]
     assert len(response["otpSubmissions"]) == 2
     assert response["otpSubmission"] is response["otpSubmissions"][-1]
@@ -416,7 +422,7 @@ def test_otp_submission_does_not_retry_outside_acs_generated_success(monkeypatch
     submissions = []
     sleeps = []
 
-    def resolve_otp(otp_purpose, acs_trans_id, settings, timeout_seconds):
+    def resolve_otp(otp_purpose, acs_trans_id, settings, timeout_seconds, otp_lookup_cache=None):
         lookups.append((otp_purpose, acs_trans_id))
         return "123456", {"source": "configured"}
 
@@ -596,6 +602,11 @@ def test_wording_profile_import_and_issuer_case_catalog_api(tmp_path):
             timeout=5,
         ) as response:
             catalog = json.loads(response.read().decode("utf-8"))
+        with request.urlopen(
+            f"http://127.0.0.1:{app_server.server_port}/api/sit/browser-cases?issuerId=default&issuerMode=direct_otp&wordingLocale=en_US",
+            timeout=5,
+        ) as response:
+            english_catalog = json.loads(response.read().decode("utf-8"))
     finally:
         app_server.shutdown()
         app_thread.join(timeout=5)
@@ -618,6 +629,10 @@ def test_wording_profile_import_and_issuer_case_catalog_api(tmp_path):
     assert catalog["wordingProfile"]["enabled"] is True
     assert catalog["wordingProfile"]["supportedLocales"] == ["zh_TW", "en_US", "zh_CN"]
     assert "case23_zh_TW" in {case["id"] for case in catalog["cases"]}
+    english_cases = [case for case in english_catalog["cases"] if case.get("wording")]
+    assert english_catalog["wordingProfile"]["selectedLocale"] == "en_US"
+    assert english_catalog["caseCount"] < catalog["caseCount"]
+    assert {case["locale"] for case in english_cases} == {"en_US"}
 
 
 def _find_closed_port():
