@@ -571,7 +571,7 @@ def test_browser_catalog_can_generate_english_only_wording_cases(tmp_path):
     assert catalog["wordingProfile"]["supportedLocales"] == list(DEFAULT_SUPPORTED_LOCALES)
 
 
-def test_normalized_direct_oob_wording_generates_enabled_oob_cases(tmp_path):
+def test_normalized_direct_oob_uses_independent_oob_catalog(tmp_path):
     profiles = {
         "sourceFormat": "normalized",
         "defaultSupportedLocales": ["en_US"],
@@ -633,19 +633,10 @@ def test_normalized_direct_oob_wording_generates_enabled_oob_cases(tmp_path):
         issuer_mode="direct_oob",
     )
 
-    generated = [case for case in catalog["cases"] if case.get("wording")]
-    assert len(generated) == 1
-    case = generated[0]
-    assert case["flow"]["kind"] == "direct"
-    assert case["flow"]["destination"] == "oob"
-    assert case["wording"]["code"] == "INIT_OOB"
-    assert case["availability"] == {"enabled": True, "reason": ""}
-    assert case["caseImplementation"]["status"] == "completed"
-    assert case["expected"]["stageUiFields"]["oob"] == {
-        "challenge_title": "Approve transaction",
-        "challenge_message": "Open your app to approve this payment.",
-        "continue_oob_button": "Continue",
+    assert {case["id"] for case in catalog["cases"]} == {
+        f"oob{number:02d}" for number in range(1, 14)
     }
+    assert not any(case.get("wording") for case in catalog["cases"])
 
 
 def test_normalized_selection_oob_wording_generates_selection_and_oob_branch(tmp_path):
@@ -697,7 +688,7 @@ def test_normalized_selection_oob_wording_generates_selection_and_oob_branch(tmp
     assert generated["selection_branch"]["caseImplementation"]["status"] == "completed"
 
 
-def test_preferred_oob_filters_selection_wording_cases_to_oob_branch(tmp_path):
+def test_preferred_oob_uses_independent_oob_catalog(tmp_path):
     profiles = {
         "sourceFormat": "normalized",
         "defaultSupportedLocales": ["en_US"],
@@ -748,15 +739,13 @@ def test_preferred_oob_filters_selection_wording_cases_to_oob_branch(tmp_path):
         preferred_challenge="oob",
     )
 
-    generated_destinations = {
-        (case.get("flow") or {}).get("destination")
-        for case in catalog["cases"]
-        if case.get("wording") and (case.get("flow") or {}).get("kind") == "selection_branch"
+    assert {case["id"] for case in catalog["cases"]} == {
+        f"oob{number:02d}" for number in range(1, 14)
     }
-    assert generated_destinations == {"oob"}
+    assert not any(case.get("wording") for case in catalog["cases"])
 
 
-def test_normalized_oob_switch_wording_generates_switch_to_sms_case(tmp_path):
+def test_normalized_oob_switch_uses_independent_oob_catalog(tmp_path):
     profiles = {
         "sourceFormat": "normalized",
         "defaultSupportedLocales": ["en_US"],
@@ -798,14 +787,10 @@ def test_normalized_oob_switch_wording_generates_switch_to_sms_case(tmp_path):
         issuer_mode="default_oob_can_switch_otp",
     )
 
-    generated = [case for case in catalog["cases"] if case.get("wording")]
-    assert len(generated) == 1
-    case = generated[0]
-    assert case["flow"]["kind"] == "oob_switch_sms"
-    assert case["flow"]["switchCreq"] is True
-    assert [stage["type"] for stage in case["flow"]["stages"]] == ["oob", "sms"]
-    assert case["availability"]["enabled"] is True
-    assert case["caseImplementation"]["status"] == "completed"
+    assert {case["id"] for case in catalog["cases"]} == {
+        f"oob{number:02d}" for number in range(1, 14)
+    }
+    assert not any(case.get("wording") for case in catalog["cases"])
 
 
 def test_browser_catalog_preserves_raw_case_flow_metadata(tmp_path):
