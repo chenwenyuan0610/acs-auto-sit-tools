@@ -308,6 +308,58 @@
         "selection_sms_otp"
       ],
       "note": ""
+    },
+    "oob01": {
+      "completedModes": [],
+      "note": "OOB catalog defined; scenario-specific live automation is pending."
+    },
+    "oob02": {
+      "completedModes": [],
+      "note": "OOB catalog defined; scenario-specific live automation is pending."
+    },
+    "oob03": {
+      "completedModes": [],
+      "note": "OOB catalog defined; scenario-specific live automation is pending."
+    },
+    "oob04": {
+      "completedModes": [],
+      "note": "OOB catalog defined; scenario-specific live automation is pending."
+    },
+    "oob05": {
+      "completedModes": [],
+      "note": "OOB catalog defined; scenario-specific live automation is pending."
+    },
+    "oob06": {
+      "completedModes": [],
+      "note": "OOB catalog defined; scenario-specific live automation is pending."
+    },
+    "oob07": {
+      "completedModes": [],
+      "note": "OOB catalog defined; scenario-specific live automation is pending."
+    },
+    "oob08": {
+      "completedModes": [],
+      "note": "OOB catalog defined; scenario-specific live automation is pending."
+    },
+    "oob09": {
+      "completedModes": [],
+      "note": "OOB catalog defined; scenario-specific live automation is pending."
+    },
+    "oob10": {
+      "completedModes": [],
+      "note": "OOB catalog defined; scenario-specific live automation is pending."
+    },
+    "oob11": {
+      "completedModes": [],
+      "note": "OOB catalog defined; scenario-specific live automation is pending."
+    },
+    "oob12": {
+      "completedModes": [],
+      "note": "OOB catalog defined; scenario-specific live automation is pending."
+    },
+    "oob13": {
+      "completedModes": [],
+      "note": "OOB catalog defined; scenario-specific live automation is pending."
     }
   }
 }

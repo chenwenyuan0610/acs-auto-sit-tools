@@ -127,6 +127,21 @@ Runtime verification imported the repository's normalized workbook successfully:
 
 The first OOB Browser active set is planned separately from the OTP catalog. The current recommendation is to keep OOB cases in a separate catalog, using IDs such as `oob01` through `oob13`, instead of mixing them into the existing OTP `caseXX` list.
 
+## Preferred OOB Browser Catalog
+
+The implemented OOB Browser catalog source is `sit_cases/oob_browser_cases.json`. It contains exactly `oob01` through `oob13`:
+
+- OOB success with CAVV, cancel, reject, and interrupt.
+- PA and NPA valid and invalid data scenarios.
+- 3RI valid and invalid data scenarios.
+- English PA authentication, PA uncompleted, and NPA authentication/uncompleted scenarios.
+
+Catalog selection uses the effective preferred challenge. An explicit OOB preference selects the OOB catalog; `auto` resolves to the selected issuer mode's default preferred challenge. `direct_oob` therefore selects the OOB catalog under `auto`, while an effective SMS or Email preference continues to use the OTP catalog. OOB catalog validation requires exactly the unique IDs `oob01` through `oob13`, all with `challengeType = oob`; an invalid or missing OOB catalog raises an error and never falls back to the OTP catalog.
+
+All `oob01` through `oob13` progress records are intentionally pending. The catalog is defined, but scenario-specific live automation is still planned.
+
+Verification on 2026-07-17 used workspace-local pytest base-temp directories. Focused progress/API coverage passed 87 tests, wording-profile coverage passed 25 tests, and the full suite passed all 209 tests. The three previous generated-OOB wording expectations were updated to the approved contract: an effective OOB preference selects the independent OOB catalog and does not apply wording-profile expansion.
+
 Pending follow-up: `case01` through `case20` are still legacy browser cases loaded from the original Browser SIT catalog. When the user changes issuer mode or preferred challenge, their live execution plan may select a different challenge path, but the catalog list still shows the original Excel function point, expected result, and no effective challenge metadata. Before treating these as mode-aware cases, add catalog fields such as effective challenge, effective plan summary, and mode applicability so the UI can clearly show whether each legacy case is currently running SMS OTP, Email OTP, OOB, or is not applicable for the selected mode.
 
 The first OOB active set should include:
