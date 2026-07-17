@@ -63,6 +63,67 @@ def test_browser_catalog_path_preserves_caller_otp_path_for_effective_sms(tmp_pa
     )
 
 
+def test_direct_oob_auto_loads_the_complete_oob_catalog(tmp_path):
+    catalog = load_browser_case_catalog(
+        progress_path=tmp_path / "missing-progress.json",
+        issuer_mode="direct_oob",
+    )
+
+    assert [case["id"] for case in catalog["cases"]] == [
+        f"oob{number:02d}" for number in range(1, 14)
+    ]
+    assert {case["challengeType"] for case in catalog["cases"]} == {"oob"}
+
+
+def test_selection_sms_oob_switches_between_independent_oob_and_otp_catalogs(tmp_path):
+    oob_catalog = load_browser_case_catalog(
+        progress_path=tmp_path / "missing-progress.json",
+        issuer_mode="selection_sms_oob",
+        preferred_challenge="oob",
+    )
+    otp_catalog = load_browser_case_catalog(
+        progress_path=tmp_path / "missing-progress.json",
+        issuer_mode="selection_sms_oob",
+        preferred_challenge="sms",
+    )
+
+    oob_ids = {case["id"] for case in oob_catalog["cases"]}
+    otp_ids = {case["id"] for case in otp_catalog["cases"]}
+    assert oob_ids.isdisjoint(otp_ids)
+    assert otp_catalog["cases"][0]["id"] == "case01"
+
+
+def test_invalid_selected_oob_catalog_raises_without_falling_back_to_otp(tmp_path):
+    malformed_oob_path = tmp_path / "oob-cases.json"
+    malformed_oob_path.write_text(json.dumps({"caseCount": 13, "cases": []}), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Invalid OOB Browser catalog"):
+        load_browser_case_catalog(
+            progress_path=tmp_path / "missing-progress.json",
+            issuer_mode="direct_oob",
+            oob_path=malformed_oob_path,
+        )
+
+
+def test_oob_catalog_rejects_duplicate_case_ids_even_when_expected_ids_exist(tmp_path):
+    cases = [
+        {"id": f"oob{number:02d}", "challengeType": "oob"}
+        for number in range(1, 14)
+    ]
+    cases.append({"id": "oob01", "challengeType": "oob"})
+    oob_path = tmp_path / "duplicate-oob-cases.json"
+    oob_path.write_text(
+        json.dumps({"caseCount": 13, "cases": cases}), encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="Invalid OOB Browser catalog"):
+        load_browser_case_catalog(
+            progress_path=tmp_path / "missing-progress.json",
+            issuer_mode="direct_oob",
+            oob_path=oob_path,
+        )
+
+
 def test_load_case_progress_records_reads_case_modes_and_ignores_unknown_modes(tmp_path):
     path = tmp_path / "progress.json"
     path.write_text(

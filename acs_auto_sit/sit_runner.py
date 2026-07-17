@@ -98,17 +98,48 @@ def load_browser_case_catalog(
     issuer_mode: str = "direct_otp",
     wording_locale: str = "all",
     preferred_challenge: str = "auto",
+    oob_path: Path = DEFAULT_OOB_BROWSER_CASES_PATH,
 ) -> dict[str, Any]:
-    if not path.is_file():
+    resolved_issuer_mode = resolve_issuer_mode(issuer_mode)
+    selected_challenge = effective_preferred_challenge(
+        resolved_issuer_mode, preferred_challenge
+    )
+    catalog_path = browser_catalog_path(
+        resolved_issuer_mode,
+        preferred_challenge,
+        otp_path=path,
+        oob_path=oob_path,
+    )
+    is_oob_catalog = selected_challenge == "oob"
+
+    if not catalog_path.is_file():
+        if is_oob_catalog:
+            raise ValueError(
+                f"Invalid OOB Browser catalog: file does not exist: {catalog_path}"
+            )
         return {
             "sourceWorkbook": "",
             "sheet": "Browser",
             "caseCount": 0,
             "cases": [],
         }
-    data = json.loads(path.read_text(encoding="utf-8"))
+
+    try:
+        data = json.loads(catalog_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        if is_oob_catalog:
+            raise ValueError(f"Invalid OOB Browser catalog: {error}") from error
+        raise
+
+    if is_oob_catalog:
+        _validate_oob_browser_case_catalog(data)
+
     source_cases = data.get("cases") or []
-    profiles = load_wording_profiles(wording_profiles_path) if wording_profiles_path else None
+    profiles = (
+        load_wording_profiles(wording_profiles_path)
+        if wording_profiles_path and not is_oob_catalog
+        else None
+    )
     wording_profile = {
         "enabled": False,
         "issuerId": issuer_id,
@@ -144,7 +175,6 @@ def load_browser_case_catalog(
         load_case_progress_records(progress_path),
     )
     progress_by_id = {item["caseId"]: item for item in progress["cases"]}
-    resolved_issuer_mode = resolve_issuer_mode(issuer_mode)
     cases = [
         {
             **case,
@@ -164,6 +194,33 @@ def load_browser_case_catalog(
         "wordingProfile": wording_profile,
         "cases": cases,
     }
+
+
+def _validate_oob_browser_case_catalog(data: Any) -> None:
+    if not isinstance(data, dict):
+        raise ValueError("Invalid OOB Browser catalog: top-level JSON must be an object.")
+
+    cases = data.get("cases")
+    if data.get("caseCount") != 13:
+        raise ValueError("Invalid OOB Browser catalog: caseCount must be 13.")
+    if not isinstance(cases, list):
+        raise ValueError("Invalid OOB Browser catalog: cases must be a list.")
+
+    expected_ids = {f"oob{number:02d}" for number in range(1, 14)}
+    actual_ids = [case.get("id") for case in cases if isinstance(case, dict)]
+    if (
+        len(cases) != 13
+        or len(actual_ids) != 13
+        or len(set(actual_ids)) != 13
+        or set(actual_ids) != expected_ids
+    ):
+        raise ValueError(
+            "Invalid OOB Browser catalog: cases must contain unique IDs oob01 through oob13."
+        )
+    if any(case.get("challengeType") != "oob" for case in cases):
+        raise ValueError(
+            "Invalid OOB Browser catalog: every case challengeType must be oob."
+        )
 
 
 def dry_run_cases(case_ids: list[str], path: Path = DEFAULT_BROWSER_CASES_PATH) -> list[dict[str, Any]]:
@@ -278,6 +335,8 @@ def _case_summary(case: dict[str, Any]) -> dict[str, Any]:
         "steps": case.get("steps", []),
         "expected": case.get("expected", {}),
         "automation": case.get("automation", {}),
+        "challengeType": case.get("challengeType", ""),
+        "flow": case.get("flow", {}),
         "source": case.get("source", {}),
         "status": "pending",
     }
@@ -287,7 +346,6 @@ def _case_summary(case: dict[str, Any]) -> dict[str, Any]:
         "browserLanguage",
         "wordingScenario",
         "wording",
-        "flow",
         "availability",
     ):
         if key in case:
