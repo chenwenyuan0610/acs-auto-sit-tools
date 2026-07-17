@@ -556,6 +556,8 @@ def _raw_wording_groups(
     groups: dict[tuple[str, str, str, str], dict[str, Any]] = {}
     selected_issuer_id = issuer_id or "default"
     for wording in wordings:
+        if _is_raw_non_wording_column(str(wording.get("sourceColumn") or "")):
+            continue
         wording_issuer = str(wording.get("issuerId") or "default")
         if wording_issuer not in {"default", selected_issuer_id}:
             continue
@@ -908,7 +910,11 @@ def _normalize_raw_workbook(
             row_keys.add(row_key)
             for source_column, value in row.items():
                 content = _text(value)
-                if not content or source_column in RAW_METADATA_COLUMNS:
+                if (
+                    not content
+                    or source_column in RAW_METADATA_COLUMNS
+                    or _is_raw_non_wording_column(source_column)
+                ):
                     continue
                 field_key = RAW_FIELD_KEYS.get(source_column) or _raw_field_key(source_column)
                 normalized = {
@@ -949,6 +955,11 @@ def _normalize_raw_workbook(
 def _raw_field_key(header: str) -> str:
     digest = sha1(header.encode("utf-8")).hexdigest()[:10]
     return f"raw_{digest}"
+
+
+def _is_raw_non_wording_column(header: str) -> bool:
+    normalized = re.sub(r"[\s_-]+", "", str(header or "")).casefold()
+    return "sql" in normalized or normalized.startswith("table")
 
 
 def _add_wording_only_issuers(

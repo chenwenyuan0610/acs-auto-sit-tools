@@ -1283,8 +1283,8 @@ def test_live_runner_uses_generated_email_branch_destination(monkeypatch, tmp_pa
     assert calls[0]["payload"]["browserLanguage"] == "en-US"
     assert result["details"]["casePlan"]["preferredChallenge"] == "email"
     assert result["details"]["prompt"]["fields"] == [
-        {"name": "challenge_title", "expected": "Email verification", "found": True},
-        {"name": "challenge_message", "expected": "Enter Email OTP", "found": True},
+        {"name": "challenge_title", "expected": "Email verification", "actual": "Email verification", "found": True},
+        {"name": "challenge_message", "expected": "Enter Email OTP", "actual": "Enter Email OTP", "found": True},
     ]
     assert result["status"] == "pass"
 
@@ -1356,9 +1356,9 @@ def test_excel_field_results_validate_every_field_with_html_normalization():
     results = server_module._excel_field_results(fields, visible)
 
     assert results == [
-        {"name": "challenge_message", "expected": fields["challenge_message"], "found": True},
-        {"name": "help_title", "expected": fields["help_title"], "found": True},
-        {"name": "merchant_label", "expected": fields["merchant_label"], "found": True},
+        {"name": "challenge_message", "expected": fields["challenge_message"], "actual": "The code was sent to ***123. Merchant: Demo Merchant", "found": True},
+        {"name": "help_title", "expected": fields["help_title"], "actual": "Help & Support", "found": True},
+        {"name": "merchant_label", "expected": fields["merchant_label"], "actual": "Merchant: Demo Merchant", "found": True},
     ]
 
 
@@ -1973,7 +1973,7 @@ def test_challenge_advance_submits_resend_code_control(monkeypatch):
     )
 
     assert sleeps == [30]
-    assert forms == [{"acsTransID": "acs-trans-1", "challengeValue": "", "resendCode": "Y"}]
+    assert forms == [{"acsTransID": "acs-trans-1", "resendCode": "Y"}]
     assert response["resendSubmission"]["action"] == "resend"
     assert "Verification code was resend." in response["resendSubmission"]["challenge"]["visibleText"]
 
@@ -2251,8 +2251,8 @@ def test_challenge_advance_resends_until_resend_control_disappears(monkeypatch):
 
     assert sleeps == [30, 30]
     assert forms == [
-        {"acsTransID": "acs-trans-1", "challengeValue": "", "resendCode": "Y"},
-        {"acsTransID": "acs-trans-1", "challengeValue": "", "resendCode": "Y"},
+        {"acsTransID": "acs-trans-1", "resendCode": "Y"},
+        {"acsTransID": "acs-trans-1", "resendCode": "Y"},
     ]
     assert len(response["resendSubmissions"]) == 2
     assert response["resendLimitReached"] is True

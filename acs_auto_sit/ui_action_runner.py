@@ -10,7 +10,7 @@ from acs_auto_sit.ui_validation import validate_stage_fields
 class ActionContext:
     page: dict[str, Any] | None
     stage_fields: dict[str, dict[str, Any]]
-    submit_form: Callable[[dict[str, Any], dict[str, str]], dict[str, Any]]
+    submit_form: Callable[[dict[str, Any], dict[str, Any]], dict[str, Any]]
     resolve_otp: Callable[[str, dict[str, Any]], tuple[str, dict[str, Any]]]
     sleep: Callable[[float], None]
     expiry_wait_seconds: float = 0
@@ -68,7 +68,7 @@ def execute_generated_actions(
                 delay = _action_delay(action, context.resend_delay_seconds)
                 if delay > 0:
                     context.sleep(delay)
-                response = context.submit_form(current_page or {}, {"resendCode": "Y"})
+                response = context.submit_form(current_page or {}, _resend_overrides(current_page))
                 current_page = _response_page(response)
                 result.update({"delaySeconds": delay, "response": response})
         elif action_type == "resend_until_limit":
@@ -80,7 +80,7 @@ def execute_generated_actions(
                         break
                     if context.resend_delay_seconds > 0:
                         context.sleep(context.resend_delay_seconds)
-                    response = context.submit_form(current_page or {}, {"resendCode": "Y"})
+                    response = context.submit_form(current_page or {}, _resend_overrides(current_page))
                     submissions.append({"attempt": attempt, **response})
                     current_page = _response_page(response)
                     if response.get("cres") or current_page is None:
@@ -159,6 +159,19 @@ def _response_page(response: dict[str, Any]) -> dict[str, Any] | None:
 
 def _has_action(page: dict[str, Any] | None, name: str) -> bool:
     return bool(page and (page.get("availableActions") or {}).get(name))
+
+
+def _resend_overrides(page: dict[str, Any] | None) -> dict[str, Any]:
+    value = page or {}
+    fields = value.get("fields") or {}
+    for name in ("resend", "resendCode", "resendOtp", "resendOTP", "resendButton", "resendChallenge"):
+        if name in fields:
+            return {"challengeValue": None, name: fields.get(name) or "Y"}
+    for control in value.get("actionControls") or []:
+        name = str(control.get("name") or "")
+        if name and "resend" in name.casefold():
+            return {"challengeValue": None, name: str(control.get("value") or "Y")}
+    return {"challengeValue": None, "resend": "Y"}
 
 
 def _action_delay(action: dict[str, Any], configured: float) -> float:

@@ -119,7 +119,7 @@ def test_resend_otp_uses_configured_delay_and_updates_stage_page():
     )
 
     assert result["classification"] == "passed"
-    assert submitted == [{"resendCode": "Y"}]
+    assert submitted == [{"challengeValue": None, "resend": "Y"}]
     assert sleeps == [30]
     assert result["actionResults"][-1]["fieldResults"][0]["found"] is True
 
@@ -132,8 +132,22 @@ def test_resend_gap_limit_does_not_sleep():
     result = execute_generated_actions(context, [{"type": "resend_otp", "delaySeconds": 0}])
 
     assert result["classification"] == "passed"
-    assert submitted == [{"resendCode": "Y"}]
+    assert submitted == [{"challengeValue": None, "resend": "Y"}]
     assert sleeps == []
+
+
+def test_resend_otp_uses_page_control_and_removes_challenge_value():
+    context, submitted, _ = _context([_page("otp", resend=True)])
+    context.page = {
+        **_page("otp", resend=True),
+        "fields": {"challengeValue": "stale-otp"},
+        "actionControls": [{"name": "resendCode", "value": "Y"}],
+    }
+
+    result = execute_generated_actions(context, [{"type": "resend_otp"}])
+
+    assert result["classification"] == "passed"
+    assert submitted == [{"challengeValue": None, "resendCode": "Y"}]
 
 
 def test_resend_until_limit_stops_when_control_disappears():
@@ -149,7 +163,7 @@ def test_resend_until_limit_stops_when_control_disappears():
     result = execute_generated_actions(context, [{"type": "resend_until_limit"}])
 
     assert result["classification"] == "passed"
-    assert submitted == [{"resendCode": "Y"}] * 3
+    assert submitted == [{"challengeValue": None, "resend": "Y"}] * 3
     assert sleeps == [30, 30, 30]
 
 

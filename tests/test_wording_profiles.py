@@ -109,6 +109,7 @@ def _raw_workbook_bytes(
     conflicting_sms=False,
     omit_email_column=None,
     metadata_only_email_row=False,
+    include_sql_columns=False,
 ):
     workbook = Workbook()
     workbook.remove(workbook.active)
@@ -132,11 +133,17 @@ def _raw_workbook_bytes(
     }
     for sheet_name, row in source_rows.items():
         headers = list(RAW_WORDING_HEADERS)
+        values = list(row)
+        if include_sql_columns:
+            headers.extend(("SQL 語法", "Table欄位", "Table value"))
+            values.extend(("INSERT INTO challenge VALUES ('copy')", "(`column`)", "VALUES ('copy')"))
         if sheet_name == "Email" and omit_email_column:
-            headers.remove(omit_email_column)
+            pairs = [(header, value) for header, value in zip(headers, values) if header != omit_email_column]
+            headers = [header for header, _ in pairs]
+            values = [value for _, value in pairs]
         sheet = workbook.create_sheet(sheet_name)
         sheet.append(headers)
-        sheet.append(tuple(value for index, value in enumerate(row) if RAW_WORDING_HEADERS[index] in headers))
+        sheet.append(values)
         if sheet_name == "SMS" and duplicate_sms:
             sheet.append(row)
         if sheet_name == "SMS" and conflicting_sms:
@@ -251,6 +258,39 @@ def test_import_detects_and_normalizes_raw_challenge_ui_workbook(tmp_path):
     )
     assert oob_continue["content"] == "继续验证"
     assert load_wording_profiles(destination) == imported
+
+
+def test_import_raw_workbook_ignores_generated_sql_columns(tmp_path):
+    imported = import_wording_workbook(
+        _raw_workbook_bytes(include_sql_columns=True),
+        tmp_path / "wording_profiles.json",
+    )
+
+    assert not any(item["fieldKey"].startswith("raw_") for item in imported["wordings"])
+    assert not any("INSERT INTO" in item["content"] for item in imported["wordings"])
+
+
+def test_raw_case_generation_filters_sql_columns_from_existing_profile(tmp_path):
+    imported = import_wording_workbook(_raw_workbook_bytes(), tmp_path / "wording_profiles.json")
+    sample = next(item for item in imported["wordings"] if item["sourceSheet"] == "SMS")
+    imported["wordings"].append(
+        {
+            **sample,
+            "fieldKey": "raw_7a49ade02e",
+            "sourceColumn": "SQL 語法",
+            "content": "INSERT INTO challenge VALUES ('copy')",
+        }
+    )
+
+    cases = build_localized_wording_cases(
+        imported,
+        [{"id": "case23", "expected": {}}],
+        issuer_mode="sms_otp",
+        wording_locale="zh_TW",
+    )
+
+    assert cases
+    assert all("raw_7a49ade02e" not in case["expected"]["uiFields"] for case in cases)
 
 
 def test_import_raw_workbook_rejects_missing_required_source_column_without_replacing_valid_file(tmp_path):

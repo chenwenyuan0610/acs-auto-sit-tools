@@ -2345,7 +2345,7 @@ def _cancel_challenge_overrides(page: dict[str, Any]) -> dict[str, str]:
     return {"cancel": "true"}
 
 
-def _resend_otp_overrides(page: dict[str, Any]) -> dict[str, str]:
+def _resend_otp_overrides(page: dict[str, Any]) -> dict[str, Any]:
     fields = page.get("fields") or {}
     controls = page.get("actionControls") or []
     resend_names = (
@@ -2358,21 +2358,25 @@ def _resend_otp_overrides(page: dict[str, Any]) -> dict[str, str]:
     )
     for name in resend_names:
         if name in fields:
-            return {name: fields.get(name) or "Y"}
+            return {"challengeValue": None, name: fields.get(name) or "Y"}
     for control in controls:
         name = str(control.get("name") or "")
         if name and "resend" in name.lower():
-            return {name: str(control.get("value") or "Y")}
-    return {"resend": "Y"}
+            return {"challengeValue": None, name: str(control.get("value") or "Y")}
+    return {"challengeValue": None, "resend": "Y"}
 
 
 def _submit_challenge_form(
     page: dict[str, Any],
-    overrides: dict[str, str],
+    overrides: dict[str, Any],
     timeout_seconds: int,
 ) -> dict[str, Any]:
     fields = dict(page.get("fields") or {})
-    fields.update(overrides)
+    for name, value in overrides.items():
+        if value is None:
+            fields.pop(name, None)
+        else:
+            fields[name] = str(value)
     request_headers = dict(page.get("requestHeaders") or {})
     http = post_form(
         page["formAction"],

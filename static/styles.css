@@ -186,6 +186,23 @@ input {
   min-height: 38px;
 }
 
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--primary);
+  cursor: pointer;
+  flex: 0 0 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  width: 24px;
+}
+
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible {
+  outline: 3px solid rgba(0, 108, 103, 0.28);
+  outline-offset: 3px;
+}
+
 select {
   min-height: 38px;
 }
@@ -226,14 +243,14 @@ textarea.evidence {
 }
 
 .check-label input {
-  min-height: auto;
-  width: auto;
+  min-height: 24px;
+  width: 24px;
 }
 
 #selectAllCases {
-  height: 20px;
-  min-height: 20px;
-  width: 20px;
+  height: 24px;
+  min-height: 24px;
+  width: 24px;
 }
 
 .result-grid {
@@ -330,7 +347,7 @@ textarea.evidence {
   border-radius: 6px;
   display: grid;
   gap: 8px;
-  grid-template-columns: 22px minmax(0, 1fr) 72px;
+  grid-template-columns: 30px minmax(0, 1fr) 72px;
   min-height: 58px;
   padding: 8px;
   text-align: left;
@@ -342,8 +359,9 @@ textarea.evidence {
 }
 
 .case-check {
-  min-height: auto;
-  width: 16px;
+  height: 24px;
+  min-height: 24px;
+  width: 24px;
 }
 
 .case-main {
@@ -546,6 +564,88 @@ h2 {
   max-height: 260px;
   overflow: auto;
   padding: 10px 12px;
+}
+
+.html-preview-section {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 12px;
+  margin: 14px 0;
+  padding-top: 14px;
+}
+
+.html-preview-section[hidden] {
+  display: none;
+}
+
+.html-preview-section > h4,
+.html-preview-card h5 {
+  color: var(--text);
+  margin: 0;
+  text-transform: none;
+}
+
+.html-preview-section > h4 {
+  font-size: 14px;
+}
+
+.html-preview-card {
+  background: #fbfcfd;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.html-preview-header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  padding: 8px 12px;
+}
+
+.html-preview-card h5 {
+  font-size: 12px;
+}
+
+.html-preview-copy {
+  min-height: 30px;
+  padding: 4px 10px;
+}
+
+.html-preview-frame {
+  background: #ffffff;
+  border: 1px solid var(--line);
+  display: block;
+  height: 700px;
+  margin: 0 auto 12px;
+  max-width: calc(100% - 24px);
+  width: 390px;
+}
+
+.html-preview-source {
+  border-top: 1px solid var(--line);
+  padding: 10px 12px;
+}
+
+.html-preview-source summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.html-preview-source pre {
+  margin: 10px 0 0;
+  max-height: 300px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 600px) {
+  .html-preview-frame {
+    height: 700px;
+    width: calc(100% - 24px);
+  }
 }
 
 .case-description-grid {

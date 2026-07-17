@@ -56,6 +56,7 @@ const caseExpectedOutput = document.querySelector("#caseExpectedOutput");
 const caseActualOutput = document.querySelector("#caseActualOutput");
 const caseDiffOutput = document.querySelector("#caseDiffOutput");
 const caseRequestTimeline = document.querySelector("#caseRequestTimeline");
+const caseHtmlPreview = document.querySelector("#caseHtmlPreview");
 const caseRunOutput = document.querySelector("#caseRunOutput");
 
 let evidence = [];
@@ -119,6 +120,7 @@ function actualResultForCase(result) {
   }
 
   const details = result.details || {};
+  const comparisonFields = details.comparison?.fields || [];
   const prompt = details.prompt
     ? {
         fields: promptFieldSummary(details.prompt),
@@ -126,6 +128,16 @@ function actualResultForCase(result) {
         actualKeywords: promptVisibleTextSummary(details.prompt),
       }
     : undefined;
+
+  if (comparisonFields.length) {
+    return {
+      status: statusLabel(result.status),
+      reason: result.reason || undefined,
+      wordingFields: Object.fromEntries(
+        comparisonFields.map((field) => [field.name, field.actual ?? null])
+      ),
+    };
+  }
 
   if (prompt?.fields?.length) {
     return {
@@ -170,6 +182,7 @@ function promptVisibleTextSummary(prompt) {
 function promptFieldSummary(prompt) {
   return (prompt?.fields || []).map((field) => ({
     field: field.name,
+    actual: field.actual ?? null,
     status: field.found ? "找到" : "缺少",
   }));
 }
@@ -381,6 +394,111 @@ function dedupeTechnicalRequests(requests) {
   return unique;
 }
 
+function collectHtmlPreviews(result) {
+  const previews = [];
+  const seenObjects = new Set();
+  const seenHtml = new Set();
+
+  const scan = (value, path = []) => {
+    if (!value || typeof value !== "object" || seenObjects.has(value)) {
+      return;
+    }
+    seenObjects.add(value);
+    if (typeof value.rawHtml === "string" && value.rawHtml.trim() && !seenHtml.has(value.rawHtml)) {
+      seenHtml.add(value.rawHtml);
+      previews.push({
+        label: path.filter(Boolean).join(" / ") || "Challenge",
+        html: value.rawHtml,
+        baseUrl: value.formAction || "",
+      });
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (key !== "rawHtml") {
+        scan(child, [...path, key]);
+      }
+    }
+  };
+
+  scan(result?.details?.challengeFlow, ["challengeFlow"]);
+  return previews;
+}
+
+function escapeHtmlAttribute(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function sandboxedPreviewHtml(rawHtml, baseUrl = "") {
+  const policy = "default-src 'none'; img-src data: http: https:; font-src data: http: https:; style-src 'unsafe-inline' http: https:;";
+  const base = baseUrl ? `<base href="${escapeHtmlAttribute(baseUrl)}">` : "";
+  return `<meta http-equiv="Content-Security-Policy" content="${policy}">${base}${rawHtml}`;
+}
+
+function isUiValidationCase(caseItem) {
+  if (String(caseItem?.id || "").startsWith("ui_")) {
+    return true;
+  }
+  return (caseItem?.casePlan?.actions || caseItem?.actions || []).some(
+    (action) => action?.type === "assert_stage_ui"
+  );
+}
+
+function renderHtmlPreviews(result, caseItem) {
+  if (!caseHtmlPreview) {
+    return;
+  }
+  const previews = isUiValidationCase(caseItem) ? collectHtmlPreviews(result) : [];
+  caseHtmlPreview.replaceChildren();
+  caseHtmlPreview.hidden = previews.length === 0;
+  if (!previews.length) {
+    return;
+  }
+
+  const heading = document.createElement("h4");
+  heading.textContent = "ACS HTML Preview";
+  caseHtmlPreview.appendChild(heading);
+
+  previews.forEach((preview, index) => {
+    const card = document.createElement("article");
+    card.className = "html-preview-card";
+    const title = document.createElement("h5");
+    title.textContent = `${index + 1}. ${preview.label}`;
+    const header = document.createElement("div");
+    header.className = "html-preview-header";
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.className = "html-preview-copy";
+    copyButton.textContent = "Copy HTML";
+    copyButton.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(preview.html);
+      copyButton.textContent = "Copied";
+      window.setTimeout(() => { copyButton.textContent = "Copy HTML"; }, 1500);
+    });
+    header.append(title, copyButton);
+
+    const frame = document.createElement("iframe");
+    frame.className = "html-preview-frame";
+    frame.title = `ACS HTML preview: ${preview.label}`;
+    frame.setAttribute("sandbox", "");
+    frame.setAttribute("referrerpolicy", "no-referrer");
+    frame.srcdoc = sandboxedPreviewHtml(preview.html, preview.baseUrl);
+
+    const source = document.createElement("details");
+    source.className = "html-preview-source";
+    const summary = document.createElement("summary");
+    summary.textContent = "View HTML source";
+    const code = document.createElement("pre");
+    code.textContent = preview.html;
+    source.append(summary, code);
+
+    card.append(header, frame, source);
+    caseHtmlPreview.appendChild(card);
+  });
+}
+
 function collectTechnicalRequests(result) {
   if (!result) {
     return [];
@@ -481,6 +599,7 @@ function renderTechnicalDetails(result, caseItem) {
       caseRequestTimeline.appendChild(item);
     });
   }
+  renderHtmlPreviews(result, caseItem);
   caseRunOutput.textContent = pretty(result || {
     message: "尚未執行",
     automation: caseItem.automation,

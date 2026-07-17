@@ -157,12 +157,14 @@ def test_sit_controls_use_execution_and_settings_sidebar():
     assert ".advanced-active .case-detail-panel" in styles
 
 
-def test_select_all_checkbox_is_larger_than_case_checkboxes():
+def test_case_selection_checkboxes_use_large_click_targets():
     styles = Path("static/styles.css").read_text(encoding="utf-8")
 
     assert "#selectAllCases" in styles
-    assert "height: 20px" in styles
-    assert "width: 20px" in styles
+    assert 'input[type="checkbox"]' in styles
+    assert "height: 24px" in styles
+    assert "width: 24px" in styles
+    assert "grid-template-columns: 30px minmax(0, 1fr) 72px" in styles
     assert ".case-check" in styles
 
 
@@ -229,6 +231,8 @@ def test_frontend_renders_actual_results_and_red_differences():
     styles = Path("static/styles.css").read_text(encoding="utf-8")
 
     assert "function actualResultForCase" in app_js
+    assert "const comparisonFields = details.comparison?.fields || []" in app_js
+    assert "comparisonFields.map((field) => [field.name, field.actual ?? null])" in app_js
     assert "function promptVisibleTextSummary" in app_js
     assert "function collectResultDifferences" in app_js
     assert "function renderResultDifferences" in app_js
@@ -282,6 +286,32 @@ def test_case_status_does_not_wrap_on_mobile():
     assert "white-space: nowrap" in case_status_rule
     assert "flex-shrink: 0" in case_status_rule
     assert "@media (max-width: 600px)" in styles
+
+
+def test_frontend_renders_returned_html_in_a_sandboxed_preview():
+    index_html = Path("static/index.html").read_text(encoding="utf-8")
+    app_js = Path("static/app.js").read_text(encoding="utf-8")
+    styles = Path("static/styles.css").read_text(encoding="utf-8")
+
+    assert 'id="caseHtmlPreview"' in index_html
+    assert index_html.index('id="caseHtmlPreview"') < index_html.index('id="caseComparisonTitle"')
+    assert "function collectHtmlPreviews" in app_js
+    assert "function renderHtmlPreviews" in app_js
+    assert "function isUiValidationCase" in app_js
+    assert 'startsWith("ui_")' in app_js
+    assert 'action?.type === "assert_stage_ui"' in app_js
+    assert 'frame.setAttribute("sandbox", "")' in app_js
+    assert 'frame.setAttribute("referrerpolicy", "no-referrer")' in app_js
+    assert "Content-Security-Policy" in app_js
+    assert "default-src 'none'" in app_js
+    assert "img-src data: http: https:" in app_js
+    assert "baseUrl: value.formAction" in app_js
+    assert "frame.srcdoc = sandboxedPreviewHtml(preview.html, preview.baseUrl)" in app_js
+    assert 'copyButton.textContent = "Copy HTML"' in app_js
+    assert "navigator.clipboard.writeText(preview.html)" in app_js
+    assert ".html-preview-frame" in styles
+    assert "height: 700px" in styles
+    assert "width: 390px" in styles
     mobile_rules = styles[styles.index("@media (max-width: 600px)"):]
     assert ".detail-header" in mobile_rules
     assert "flex-direction: column" in mobile_rules

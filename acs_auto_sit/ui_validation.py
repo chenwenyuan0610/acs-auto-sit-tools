@@ -9,11 +9,12 @@ from acs_auto_sit.challenge import visible_text_from_html
 
 def validate_stage_fields(stage: str, fields: dict[str, Any], page: dict[str, Any] | None) -> list[dict[str, Any]]:
     visible_items = (page or {}).get("visibleText") or []
-    visible = " ".join(
+    normalized_items = [
         _normalize_text(str(item))
         for item in visible_items
         if _normalize_text(str(item))
-    )
+    ]
+    visible = " ".join(normalized_items)
     results: list[dict[str, Any]] = []
 
     for name, raw_value in fields.items():
@@ -22,12 +23,34 @@ def validate_stage_fields(stage: str, fields: dict[str, Any], page: dict[str, An
             continue
 
         normalized = _normalize_text(visible_text_from_html(expected))
-        matched = bool(normalized) and _placeholder_pattern(normalized).search(visible) is not None
+        pattern = _placeholder_pattern(normalized) if normalized else None
+        match = next(
+            (candidate for item in normalized_items if (candidate := pattern.search(item))),
+            None,
+        ) if pattern else None
+        if match is None and pattern:
+            for size in range(2, len(normalized_items) + 1):
+                match = next(
+                    (
+                        candidate
+                        for start in range(len(normalized_items) - size + 1)
+                        if (
+                            candidate := pattern.search(
+                                " ".join(normalized_items[start : start + size])
+                            )
+                        )
+                    ),
+                    None,
+                )
+                if match is not None:
+                    break
+        matched = match is not None
         results.append(
             {
                 "name": str(name),
                 "stage": stage,
                 "expected": expected,
+                "actual": match.group(0) if match else None,
                 "status": "matched" if matched else "missing",
                 "found": matched,
             }
@@ -82,7 +105,7 @@ def _placeholder_pattern(expected: str) -> re.Pattern[str]:
     pattern: list[str] = []
     for part in parts:
         if re.fullmatch(r"\{\d+\}", part):
-            pattern.append(r".+?")
+            pattern.append(r".+")
         else:
             tokens = [re.escape(token) for token in part.split()]
             if tokens:
