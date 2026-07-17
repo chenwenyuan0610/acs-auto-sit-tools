@@ -45,14 +45,14 @@ def test_effective_preferred_challenge_resolves_explicit_and_auto_values(
     ) == expected
 
 
-def test_effective_oob_challenge_selects_oob_catalog():
+def test_browser_catalog_path_selects_oob_catalog_for_effective_oob():
     assert (
         browser_catalog_path(resolve_issuer_mode("direct_oob"), "auto")
         == DEFAULT_OOB_BROWSER_CASES_PATH
     )
 
 
-def test_effective_sms_challenge_preserves_caller_otp_catalog_path(tmp_path):
+def test_browser_catalog_path_preserves_caller_otp_path_for_effective_sms(tmp_path):
     otp_path = tmp_path / "otp-cases.json"
 
     assert (
