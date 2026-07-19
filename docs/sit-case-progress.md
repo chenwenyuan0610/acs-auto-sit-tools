@@ -170,6 +170,16 @@ Content-Type: application/json
 
 The response includes a deterministic simulated CAVV, `transStatus = "Y"`, `eci = "02"`, and pass/fail check objects. This lets the OOB CAVV case be automated before the real transaction-result API is available.
 
+## Local Result History and HTML Reports
+
+Completed Browser SIT runs can be saved manually under `data/sit-runs/` and reopened from the **測試結果** view. Saving local JSON history and downloading a standalone HTML report are separate user actions; neither action runs automatically when testing finishes.
+
+Single-case and multi-case runs use the same result view. The view shows the selected issuer mode, effective preferred challenge, locale, card scheme and Issuer OID parsed from the actual AReq URL, run start and finish times, aggregate pass/fail/skip/error counts, and per-case AReq time, transaction result, and duration. Each available `acsTransID` is a direct copy control; bulk ID copying is intentionally not provided.
+
+The saved JSON uses a versioned normalized shape and runtime history is excluded from Git. HTML reports are self-contained UTF-8 documents with embedded styling, escaped ACS evidence, and no server or external-asset dependency, so a downloaded report remains readable after the local SIT server stops.
+
+Verification on 2026-07-20: the full automated suite passed all 236 tests. Local browser verification reopened a saved single-case result, confirmed the OOB-to-OTP execution context, card scheme, Issuer OID, millisecond AReq time, transaction summary, direct ID copy feedback, HTML download feedback, and a 390px layout without page-level horizontal overflow.
+
 ## Source of Truth
 
 Per-case implementation progress is maintained in `data/browser_case_progress.json`. The active case catalog is maintained in `sit_cases/pipay_cup_browser_cases.json`.
