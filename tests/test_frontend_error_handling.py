@@ -353,6 +353,7 @@ def test_result_dashboard_has_context_actions_history_and_no_bulk_copy():
     assert 'downloadHtml("/api/sit/reports/html"' in app_js
     assert "Issuer OID" in app_js
     assert "Card scheme" in app_js
+    assert 'hour: "2-digit", minute: "2-digit", second: "2-digit"' in app_js
     assert ".run-metrics" in styles
     assert ".result-table" in styles
     assert ".acs-trans-id-copy" in styles

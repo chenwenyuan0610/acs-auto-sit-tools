@@ -776,7 +776,10 @@ function formatRunTime(value) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
-    : date.toLocaleTimeString("zh-TW", { hour12: false, fractionalSecondDigits: 3 });
+    : date.toLocaleTimeString("zh-TW", {
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false,
+      fractionalSecondDigits: 3,
+    });
 }
 
 async function copyAcsTransId(value, button) {
