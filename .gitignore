@@ -5,3 +5,5 @@ __pycache__/
 *.log
 live_*.json
 data/wording_profiles.json
+data/sit-runs/
+.superpowers/
