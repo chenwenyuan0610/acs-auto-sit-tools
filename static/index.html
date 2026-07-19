@@ -177,6 +177,7 @@
         <div class="case-panel-shell">
           <nav class="case-sidebar" role="tablist" aria-label="SIT 控制">
             <button class="case-sidebar-button active" type="button" role="tab" aria-selected="true" aria-controls="caseExecutionPanel" data-case-view="caseExecutionPanel">執行案例</button>
+            <button class="case-sidebar-button" type="button" role="tab" aria-selected="false" aria-controls="caseResultsPanel" data-case-view="caseResultsPanel">測試結果</button>
             <button class="case-sidebar-button" type="button" role="tab" aria-selected="false" aria-controls="caseSettingsPanel" data-case-view="caseSettingsPanel">設定</button>
             <button class="case-sidebar-button" type="button" role="tab" aria-selected="false" aria-controls="caseAdvancedPanel" data-case-view="caseAdvancedPanel">進階工具</button>
           </nav>
@@ -198,6 +199,34 @@
           <span>尚未執行</span>
         </div>
               <div id="caseList" class="case-list"></div>
+            </section>
+            <section id="caseResultsPanel" class="case-control-view" role="tabpanel" hidden>
+              <div id="sitRunContext" class="run-context"></div>
+              <div id="sitRunMetrics" class="run-metrics" aria-label="Run summary"></div>
+              <div class="toolbar result-actions">
+                <button id="saveSitRun" type="button" disabled>儲存到本機</button>
+                <button id="downloadSitReport" type="button" disabled>下載 HTML 報告</button>
+              </div>
+              <p id="sitResultActionStatus" class="result-action-status" role="status"></p>
+              <div class="table-responsive">
+                <table class="result-table">
+                  <thead>
+                    <tr>
+                      <th>案例</th>
+                      <th>狀態</th>
+                      <th>AReq 發送時間</th>
+                      <th>acsTransID</th>
+                      <th>交易結果</th>
+                      <th>耗時</th>
+                    </tr>
+                  </thead>
+                  <tbody id="sitResultRows"></tbody>
+                </table>
+              </div>
+              <section class="saved-runs-section" aria-labelledby="savedSitRunsTitle">
+                <h3 id="savedSitRunsTitle">已儲存紀錄</h3>
+                <div id="savedSitRuns" class="saved-runs"></div>
+              </section>
             </section>
             <section id="caseSettingsPanel" class="case-control-view" role="tabpanel" hidden>
         <div class="sit-options">
@@ -359,6 +388,6 @@
       </section>
     </main>
 
-    <script src="/static/app.js?v=20260717-ui-preview"></script>
+    <script src="/static/app.js?v=20260720-result-dashboard"></script>
   </body>
 </html>

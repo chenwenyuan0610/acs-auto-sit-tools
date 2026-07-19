@@ -44,6 +44,13 @@ const caseDelaySecondsInput = document.querySelector("#caseDelaySeconds");
 const includeSlowCasesInput = document.querySelector("#includeSlowCases");
 const otpExpiryWaitSecondsInput = document.querySelector("#otpExpiryWaitSeconds");
 const sitRunSummaryEl = document.querySelector("#sitRunSummary");
+const sitRunContextEl = document.querySelector("#sitRunContext");
+const sitRunMetricsEl = document.querySelector("#sitRunMetrics");
+const sitResultRowsEl = document.querySelector("#sitResultRows");
+const saveSitRunButton = document.querySelector("#saveSitRun");
+const downloadSitReportButton = document.querySelector("#downloadSitReport");
+const sitResultActionStatusEl = document.querySelector("#sitResultActionStatus");
+const savedSitRunsEl = document.querySelector("#savedSitRuns");
 const caseTitleEl = document.querySelector("#caseTitle");
 const caseSubtitleEl = document.querySelector("#caseSubtitle");
 const caseStatusEl = document.querySelector("#caseStatus");
@@ -623,6 +630,231 @@ function renderSitRunSummary(summary) {
   `;
 }
 
+function areqRouteContext(url) {
+  try {
+    const parts = new URL(url).pathname.split("/").filter(Boolean);
+    const authIndex = parts.indexOf("auth");
+    const tail = authIndex >= 0 ? parts.slice(authIndex + 1) : [];
+    if (tail.length >= 5 && tail.at(-1)?.toLowerCase() === "areq") {
+      return { cardScheme: tail[0], issuerOid: tail[2] };
+    }
+  } catch (error) {
+    // An invalid AReq URL does not invalidate an already completed run.
+  }
+  return { cardScheme: "", issuerOid: "" };
+}
+
+function completedSitRun(run) {
+  const selected = run?.execution?.selectedCaseIds || [];
+  const results = run?.results || [];
+  const terminal = new Set(["pass", "fail", "skipped", "error"]);
+  return selected.length > 0
+    && selected.length === results.length
+    && results.every((item) => terminal.has(item.status));
+}
+
+function transactionResultForDisplay(result) {
+  if (result?.transactionResult) {
+    return result.transactionResult;
+  }
+  const source = result?.details?.transactionResult || {};
+  const actual = source.actual || {};
+  const lookup = source.lookup || {};
+  return {
+    lookupStatus: !Object.keys(source).length
+      ? "not_requested"
+      : (source.error || lookup.error || lookup.ok === false ? "failed" : "succeeded"),
+    transStatus: actual.transStatus || "",
+    eci: actual.eci || "",
+    cavvPresent: actual.cavv != null && actual.cavv !== "" && actual.cavv !== "null",
+    validationStatus: Object.keys(source.mismatches || {}).length ? "fail" : (Object.keys(actual).length ? "pass" : "not_checked"),
+  };
+}
+
+function transactionResultLabel(result) {
+  const transaction = transactionResultForDisplay(result);
+  if (transaction.lookupStatus === "not_requested") {
+    return "未查詢";
+  }
+  if (transaction.lookupStatus === "failed") {
+    return "查詢失敗";
+  }
+  const values = [
+    transaction.transStatus || "—",
+    transaction.eci ? `ECI ${transaction.eci}` : "ECI —",
+    transaction.cavvPresent ? "CAVV ✓" : "CAVV —",
+  ];
+  return values.join(" · ");
+}
+
+function renderSitRunDashboard(run) {
+  if (!sitRunContextEl || !sitRunMetricsEl || !sitResultRowsEl) {
+    return;
+  }
+  sitRunContextEl.replaceChildren();
+  sitRunMetricsEl.replaceChildren();
+  sitResultRowsEl.replaceChildren();
+  const ready = completedSitRun(run);
+  saveSitRunButton.disabled = !ready;
+  downloadSitReportButton.disabled = !ready;
+  if (!run) {
+    const empty = document.createElement("p");
+    empty.textContent = "尚未執行測試。";
+    sitRunContextEl.appendChild(empty);
+    return;
+  }
+
+  const parsed = areqRouteContext(run.execution?.areqUrl || "");
+  const execution = { ...parsed, ...(run.execution || {}) };
+  const mode = issuerModes.find((item) => item.id === execution.issuerMode);
+  const contextValues = [
+    ["模式", mode ? issuerModeLabel(mode) : execution.issuerMode],
+    ["Preferred challenge", execution.effectivePreferredChallenge],
+    ["語系", execution.wordingLocale],
+    ["Card scheme", execution.cardScheme],
+    ["Issuer OID", execution.issuerOid],
+    ["開始", run.startedAt],
+    ["結束", run.finishedAt],
+  ];
+  for (const [label, value] of contextValues) {
+    const item = document.createElement("div");
+    const term = document.createElement("strong");
+    term.textContent = label;
+    const detail = document.createElement("span");
+    detail.textContent = value || "—";
+    item.append(term, detail);
+    sitRunContextEl.appendChild(item);
+  }
+
+  const summary = run.summary || {};
+  for (const [label, key] of [["總案例", "total"], ["通過", "pass"], ["失敗", "fail"], ["略過", "skipped"], ["錯誤", "error"]]) {
+    const metric = document.createElement("div");
+    metric.className = `run-metric metric-${key}`;
+    const name = document.createElement("span");
+    name.textContent = label;
+    const value = document.createElement("strong");
+    value.textContent = String(summary[key] || 0);
+    metric.append(name, value);
+    sitRunMetricsEl.appendChild(metric);
+  }
+
+  for (const result of run.results || []) {
+    const row = document.createElement("tr");
+    for (const value of [result.caseId, statusLabel(result.status), formatRunTime(result.areqSentAt)]) {
+      const cell = document.createElement("td");
+      cell.textContent = value || "—";
+      row.appendChild(cell);
+    }
+    const idCell = document.createElement("td");
+    const acsTransId = result.acsTransID || acsTransIdForResult(result);
+    if (acsTransId) {
+      const copyButton = document.createElement("button");
+      copyButton.type = "button";
+      copyButton.className = "acs-trans-id-copy";
+      copyButton.textContent = acsTransId;
+      copyButton.setAttribute("aria-label", `複製 acsTransID ${acsTransId}`);
+      copyButton.addEventListener("click", () => copyAcsTransId(acsTransId, copyButton));
+      idCell.appendChild(copyButton);
+    } else {
+      idCell.textContent = "—";
+    }
+    row.appendChild(idCell);
+    const transactionCell = document.createElement("td");
+    transactionCell.textContent = transactionResultLabel(result);
+    row.appendChild(transactionCell);
+    const durationCell = document.createElement("td");
+    durationCell.textContent = result.durationMs == null ? "—" : `${result.durationMs} ms`;
+    row.appendChild(durationCell);
+    sitResultRowsEl.appendChild(row);
+  }
+}
+
+function formatRunTime(value) {
+  if (!value) {
+    return "—";
+  }
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toLocaleTimeString("zh-TW", { hour12: false, fractionalSecondDigits: 3 });
+}
+
+async function copyAcsTransId(value, button) {
+  try {
+    await navigator.clipboard.writeText(value);
+    sitResultActionStatusEl.textContent = `已複製 ${value}`;
+  } catch (error) {
+    sitResultActionStatusEl.textContent = `無法自動複製，請選取 ID：${value}`;
+    button.focus();
+  }
+}
+
+async function loadSavedRuns() {
+  if (!savedSitRunsEl) {
+    return;
+  }
+  savedSitRunsEl.replaceChildren();
+  try {
+    const payload = await getApi("/api/sit/runs");
+    for (const saved of payload.runs || []) {
+      const row = document.createElement("div");
+      row.className = "saved-run-row";
+      const open = document.createElement("button");
+      open.type = "button";
+      open.className = "saved-run-open";
+      const execution = saved.execution || {};
+      open.textContent = `${execution.cardScheme || "—"} · ${execution.issuerMode || "—"} · ${formatSavedRunDate(saved.startedAt)} · ${saved.summary?.pass || 0}/${saved.summary?.total || 0}`;
+      open.addEventListener("click", async () => {
+        const loaded = await getApi(`/api/sit/runs/${encodeURIComponent(saved.runId)}`);
+        currentSitRun = loaded.run;
+        renderSitRunDashboard(currentSitRun);
+      });
+      const download = document.createElement("button");
+      download.type = "button";
+      download.textContent = "下載 HTML";
+      download.addEventListener("click", () => downloadHtml(
+        `/api/sit/runs/${encodeURIComponent(saved.runId)}/report.html`,
+        null,
+        "sit-report.html",
+      ));
+      row.append(open, download);
+      savedSitRunsEl.appendChild(row);
+    }
+    if (!savedSitRunsEl.children.length) {
+      const empty = document.createElement("p");
+      empty.textContent = "尚無已儲存紀錄。";
+      savedSitRunsEl.appendChild(empty);
+    }
+  } catch (error) {
+    sitResultActionStatusEl.textContent = `載入歷史紀錄失敗：${error.message}`;
+  }
+}
+
+function formatSavedRunDate(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? (value || "—") : date.toLocaleString("zh-TW", { hour12: false });
+}
+
+async function downloadHtml(path, body, fallbackName) {
+  const response = await fetch(path, {
+    method: body ? "POST" : "GET",
+    headers: body ? { "Content-Type": "application/json" } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!response.ok) {
+    const payload = await response.json();
+    throw new Error(payload.error || `HTTP ${response.status}`);
+  }
+  const disposition = response.headers.get("Content-Disposition") || "";
+  const matched = disposition.match(/filename="([^"]+)"/);
+  const link = document.createElement("a");
+  const objectUrl = URL.createObjectURL(await response.blob());
+  link.href = objectUrl;
+  link.download = matched?.[1] || fallbackName;
+  link.click();
+  URL.revokeObjectURL(objectUrl);
+}
+
 function pushEvidence(label, result) {
   evidence.unshift({
     label,
@@ -711,6 +943,7 @@ function setCaseControlView(viewId) {
     panel.hidden = !active;
   });
   sitWorkspaceEl?.classList.toggle("advanced-active", viewId === "caseAdvancedPanel");
+  sitWorkspaceEl?.classList.toggle("results-active", viewId === "caseResultsPanel");
 }
 
 function statusLabel(status) {
@@ -896,6 +1129,8 @@ async function loadSitCases() {
     const result = await getApi(`/api/sit/browser-cases?${params}`);
     sitCases = result.cases || [];
     caseResults = {};
+    currentSitRun = null;
+    renderSitRunDashboard(null);
     caseCountEl.textContent = `${result.caseCount || sitCases.length} 個案例`;
     selectedCaseId = sitCases[0]?.id || "";
     renderCaseList();
@@ -1051,6 +1286,8 @@ async function runSitCases(caseIds) {
     renderCaseList();
     selectCase(selectedCaseId || caseIds[0]);
     renderSitRunSummary(result.summary);
+    renderSitRunDashboard(currentSitRun);
+    setCaseControlView("caseResultsPanel");
     setStatus(`執行完成 ${result.summary?.completed || 0}/${result.summary?.total || caseIds.length}，成功 ${result.summary?.pass || 0}，失敗 ${result.summary?.fail || 0}`);
   } catch (error) {
     caseRunOutput.textContent = pretty({ error: error.message });
@@ -1072,6 +1309,39 @@ casePanelContentEl?.appendChild(caseAdvancedPanelEl);
 
 caseViewButtons.forEach((button) => {
   button.addEventListener("click", () => setCaseControlView(button.dataset.caseView));
+});
+
+saveSitRunButton?.addEventListener("click", async () => {
+  if (!currentSitRun) {
+    return;
+  }
+  saveSitRunButton.disabled = true;
+  try {
+    const saved = await postApi("/api/sit/runs", currentSitRun);
+    currentSitRun = saved.run;
+    renderSitRunDashboard(currentSitRun);
+    sitResultActionStatusEl.textContent = "測試結果已儲存到本機。";
+    await loadSavedRuns();
+  } catch (error) {
+    sitResultActionStatusEl.textContent = `儲存失敗：${error.message}`;
+  } finally {
+    saveSitRunButton.disabled = !completedSitRun(currentSitRun);
+  }
+});
+
+downloadSitReportButton?.addEventListener("click", async () => {
+  if (!currentSitRun) {
+    return;
+  }
+  downloadSitReportButton.disabled = true;
+  try {
+    await downloadHtml("/api/sit/reports/html", currentSitRun, "sit-report.html");
+    sitResultActionStatusEl.textContent = "HTML 報告已下載。";
+  } catch (error) {
+    sitResultActionStatusEl.textContent = `報告下載失敗：${error.message}`;
+  } finally {
+    downloadSitReportButton.disabled = !completedSitRun(currentSitRun);
+  }
 });
 
 selectAllCasesInput?.addEventListener("change", () => {
@@ -1164,10 +1434,12 @@ async function initializeSitRunner() {
   await loadIssuerModes();
   await loadWordingProfiles();
   await loadSitCases();
+  await loadSavedRuns();
 }
 
 initializeSitRunner();
 renderSitRunSummary(null);
+renderSitRunDashboard(null);
 
 sendCreqButton.addEventListener("click", async () => {
   sendCreqButton.disabled = true;

@@ -327,3 +327,32 @@ def test_sit_run_request_sends_run_identity_and_wording_locale():
     assert "startedAt," in app_js
     assert 'wordingLocale: wordingLocaleInput?.value || "all"' in app_js
     assert "currentSitRun = result;" in app_js
+
+
+def test_result_dashboard_has_context_actions_history_and_no_bulk_copy():
+    index_html = Path("static/index.html").read_text(encoding="utf-8")
+    app_js = Path("static/app.js").read_text(encoding="utf-8")
+    styles = Path("static/styles.css").read_text(encoding="utf-8")
+
+    for element_id in (
+        'id="caseResultsPanel"',
+        'id="sitRunContext"',
+        'id="sitRunMetrics"',
+        'id="sitResultRows"',
+        'id="saveSitRun"',
+        'id="downloadSitReport"',
+        'id="savedSitRuns"',
+    ):
+        assert element_id in index_html
+    assert "copyAllAcsTransIds" not in index_html
+    assert "function renderSitRunDashboard" in app_js
+    assert "async function copyAcsTransId" in app_js
+    assert "navigator.clipboard.writeText(value)" in app_js
+    assert 'postApi("/api/sit/runs"' in app_js
+    assert 'getApi("/api/sit/runs")' in app_js
+    assert 'downloadHtml("/api/sit/reports/html"' in app_js
+    assert "Issuer OID" in app_js
+    assert "Card scheme" in app_js
+    assert ".run-metrics" in styles
+    assert ".result-table" in styles
+    assert ".acs-trans-id-copy" in styles
