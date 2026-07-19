@@ -205,6 +205,7 @@ def test_sit_run_api_live_mode_skips_unsupported_case_without_network():
             "mode": "live",
             "issuerMode": "direct_oob",
             "preferredChallenge": "oob",
+            "wordingLocale": "zh_TW",
             "transaction": {
                 "url": "http://127.0.0.1/not-used",
                 "headers": {"Content-Type": "application/json"},
@@ -234,6 +235,48 @@ def test_sit_run_api_live_mode_skips_unsupported_case_without_network():
     assert result["results"][0]["status"] == "skipped"
     assert "automation status is planned" in result["results"][0]["reason"]
     assert result["results"][0]["details"]["issuerMode"]["id"] == "direct_oob"
+    assert result["runId"]
+    assert result["startedAt"]
+    assert result["finishedAt"]
+    assert result["execution"] == {
+        "issuerMode": "direct_oob",
+        "effectivePreferredChallenge": "oob",
+        "wordingLocale": "zh_TW",
+        "areqUrl": "http://127.0.0.1/not-used",
+        "selectedCaseIds": ["oob05"],
+    }
+
+
+def test_live_result_records_areq_sent_time_and_duration(monkeypatch):
+    times = iter([100.214, 102.614])
+
+    monkeypatch.setattr(server_module.time, "time", lambda: next(times))
+    monkeypatch.setattr(
+        server_module,
+        "_run_areq_flow",
+        lambda envelope, notification_url: {
+            "ok": True,
+            "ares": {"transStatus": "C", "acsTransID": "acs-1"},
+            "autoCreq": {"cres": {"transStatus": "Y", "acsTransID": "acs-1"}},
+            "http": {"request_body": envelope["payload"]},
+        },
+    )
+
+    result = server_module._run_live_sit_cases(
+        ["case01"],
+        {
+            "url": "https://acs.example/auth/V/220/issuer/123/areq",
+            "headers": {"Content-Type": "application/json"},
+            "payload": {"messageType": "AReq", "messageVersion": "2.2.0"},
+        },
+        "http://127.0.0.1/api/notification",
+        resolve_issuer_mode("sms_otp"),
+        "auto",
+    )[0]
+
+    assert result["areqSentAt"] == "1970-01-01T08:01:40.214+08:00"
+    assert result["finishedAt"] == "1970-01-01T08:01:42.614+08:00"
+    assert result["durationMs"] == 2400
 
 
 def test_live_runner_runs_case02_failure_then_success_otp_flow(monkeypatch):

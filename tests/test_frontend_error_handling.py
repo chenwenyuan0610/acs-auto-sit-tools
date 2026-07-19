@@ -315,3 +315,15 @@ def test_frontend_renders_returned_html_in_a_sandboxed_preview():
     mobile_rules = styles[styles.index("@media (max-width: 600px)"):]
     assert ".detail-header" in mobile_rules
     assert "flex-direction: column" in mobile_rules
+
+
+def test_sit_run_request_sends_run_identity_and_wording_locale():
+    app_js = Path("static/app.js").read_text(encoding="utf-8")
+
+    assert "let currentSitRun = null;" in app_js
+    assert "const startedAt = new Date().toISOString();" in app_js
+    assert "crypto.randomUUID().slice(0, 8)" in app_js
+    assert "runId," in app_js
+    assert "startedAt," in app_js
+    assert 'wordingLocale: wordingLocaleInput?.value || "all"' in app_js
+    assert "currentSitRun = result;" in app_js

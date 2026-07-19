@@ -64,6 +64,7 @@ let sitCases = [];
 let issuerModes = [];
 let selectedCaseId = "";
 let caseResults = {};
+let currentSitRun = null;
 
 function parseJsonField(field, label) {
   try {
@@ -1015,6 +1016,9 @@ async function runSitCases(caseIds) {
   }
   runSelectedCasesButton.disabled = true;
   runAllCasesButton.disabled = true;
+  const startedAt = new Date().toISOString();
+  const runId = `${startedAt.replaceAll(/[-:.]/g, "")}-${crypto.randomUUID().slice(0, 8)}`;
+  currentSitRun = null;
   setStatus("執行 SIT 案例中");
   for (const caseId of caseIds) {
     caseResults[caseId] = { caseId, status: "running", reason: "執行中" };
@@ -1029,9 +1033,12 @@ async function runSitCases(caseIds) {
     const result = await postApi("/api/sit/run", {
       caseIds,
       mode: "live",
+      runId,
+      startedAt,
       issuerId: issuerProfileInput?.value || "default",
       issuerMode: issuerModeInput?.value || "sms_otp",
       preferredChallenge: preferredChallengeInput?.value || "auto",
+      wordingLocale: wordingLocaleInput?.value || "all",
       transaction: readCommonEnvelope(
         sitAreqUrlInput?.value || areqUrlInput.value,
         parseJsonField(areqPayloadInput, "AReq")
@@ -1040,6 +1047,7 @@ async function runSitCases(caseIds) {
     for (const item of result.results || []) {
       caseResults[item.caseId] = item;
     }
+    currentSitRun = result;
     renderCaseList();
     selectCase(selectedCaseId || caseIds[0]);
     renderSitRunSummary(result.summary);

@@ -295,6 +295,7 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
         issuer_mode = resolve_issuer_mode(str(envelope.get("issuerMode") or ""))
         issuer_id = str(envelope.get("issuerId") or "default")
         preferred_challenge = resolve_preferred_challenge(str(envelope.get("preferredChallenge") or ""))
+        wording_locale = str(envelope.get("wordingLocale") or "all")
 
         if mode == "dryRun":
             results = dry_run_cases(
@@ -316,6 +317,10 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
         if not isinstance(transaction, dict):
             raise ValueError("transaction must be a JSON object.")
 
+        started_at = str(envelope.get("startedAt") or _iso_timestamp())
+        run_id = str(envelope.get("runId") or "").strip() or (
+            f"{datetime.now(timezone.utc):%Y%m%dT%H%M%S%fZ}-{uuid4().hex[:8]}"
+        )
         results = _run_live_sit_cases(
             case_ids,
             transaction,
@@ -332,6 +337,20 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
                 "issuerMode": issuer_mode,
                 "issuerId": issuer_id,
                 "preferredChallenge": preferred_challenge,
+                "runId": run_id,
+                "startedAt": started_at,
+                "finishedAt": _iso_timestamp(),
+                "execution": {
+                    "issuerMode": issuer_mode["id"],
+                    "effectivePreferredChallenge": (
+                        issuer_mode.get("defaultPreferredChallenge")
+                        if preferred_challenge == "auto"
+                        else preferred_challenge
+                    ),
+                    "wordingLocale": wording_locale,
+                    "areqUrl": str(transaction.get("url") or ""),
+                    "selectedCaseIds": list(case_ids),
+                },
                 "summary": _summarize_sit_results(results),
                 "results": results,
             }
@@ -674,7 +693,9 @@ def _run_live_sit_cases(
                 )
 
         if (case.get("expected", {}) or {}).get("transactions"):
-            results.append(
+            case_started_epoch = time.time()
+            _append_timed_result(
+                results,
                 _run_transaction_case(
                     case_id,
                     case,
@@ -684,12 +705,15 @@ def _run_live_sit_cases(
                     issuer_mode,
                     effective_preferred_challenge,
                     case_areq,
-                )
+                ),
+                case_started_epoch,
             )
             continue
 
         if (case.get("expected", {}) or {}).get("prompts"):
-            results.append(
+            case_started_epoch = time.time()
+            _append_timed_result(
+                results,
                 _run_prompt_case(
                     case_id,
                     case,
@@ -699,12 +723,15 @@ def _run_live_sit_cases(
                     issuer_mode,
                     effective_preferred_challenge,
                     case_areq,
-                )
+                ),
+                case_started_epoch,
             )
             continue
 
         if (case.get("expected", {}) or {}).get("errors"):
-            results.append(
+            case_started_epoch = time.time()
+            _append_timed_result(
+                results,
                 _run_error_case(
                     case_id,
                     case,
@@ -714,12 +741,15 @@ def _run_live_sit_cases(
                     issuer_mode,
                     effective_preferred_challenge,
                     case_areq,
-                )
+                ),
+                case_started_epoch,
             )
             continue
 
         if any(action.get("type") == "resend_until_limit" for action in (case_plan or {}).get("actions", [])):
-            results.append(
+            case_started_epoch = time.time()
+            _append_timed_result(
+                results,
                 _run_resend_limit_case(
                     case_id,
                     case,
@@ -729,10 +759,12 @@ def _run_live_sit_cases(
                     issuer_mode,
                     effective_preferred_challenge,
                     case_areq,
-                )
+                ),
+                case_started_epoch,
             )
             continue
 
+        case_started_epoch = time.time()
         run_result = _run_areq_flow(envelope, notification_url)
         case_areq["actualRequestBody"] = (
             ((run_result.get("http") or {}).get("request_body"))
@@ -741,7 +773,8 @@ def _run_live_sit_cases(
         )
         expected_messages = case.get("expected", {}).get("messages", {})
         if "ARes" in expected_messages and "CRes" not in expected_messages:
-            results.append(
+            _append_timed_result(
+                results,
                 _ares_only_result(
                     case_id,
                     case,
@@ -750,7 +783,8 @@ def _run_live_sit_cases(
                     run_result,
                     issuer_mode,
                     effective_preferred_challenge,
-                )
+                ),
+                case_started_epoch,
             )
             continue
         expected_status = (
@@ -790,7 +824,8 @@ def _run_live_sit_cases(
                 )
             )
         )
-        results.append(
+        _append_timed_result(
+            results,
             {
                 "caseId": case_id,
                 "status": status,
@@ -812,10 +847,30 @@ def _run_live_sit_cases(
                     },
                     "error": run_result.get("error") or run_result.get("draftError"),
                 },
-            }
+            },
+            case_started_epoch,
         )
 
     return results
+
+
+def _append_timed_result(
+    results: list[dict[str, Any]],
+    result: dict[str, Any],
+    started_epoch: float,
+) -> None:
+    finished_epoch = time.time()
+    result["areqSentAt"] = _iso_timestamp(started_epoch)
+    result["finishedAt"] = _iso_timestamp(finished_epoch)
+    result["durationMs"] = max(0, round((finished_epoch - started_epoch) * 1000))
+    results.append(result)
+
+
+def _iso_timestamp(epoch_seconds: float | None = None) -> str:
+    value = time.time() if epoch_seconds is None else epoch_seconds
+    return datetime.fromtimestamp(value, timezone.utc).astimezone().isoformat(
+        timespec="milliseconds"
+    )
 
 
 def _ares_only_result(
