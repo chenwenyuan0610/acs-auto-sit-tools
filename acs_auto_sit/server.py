@@ -34,6 +34,9 @@ from acs_auto_sit.otp_provider import (
     resolve_otp_value,
     simulated_otp_for_acs_trans_id,
 )
+from acs_auto_sit.run_report import html_report_filename, render_html_report
+from acs_auto_sit.run_repository import RunRepository
+from acs_auto_sit.run_results import normalize_completed_run
 from acs_auto_sit.sit_runner import browser_cases_by_id, dry_run_cases, live_skip_reason, load_browser_case_catalog
 from acs_auto_sit.three_ds import (
     build_first_creq,
@@ -65,25 +68,36 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
     server_version = "AcsAutoSit/0.1"
 
     def do_GET(self) -> None:
-        parsed = urlsplit(self.path)
-        path = parsed.path
-        query = parse_qs(parsed.query)
-        if path == "/":
-            self._serve_static("index.html")
-            return
-        if path == "/api/sit/browser-cases":
-            self._handle_browser_cases(query)
-            return
-        if path == "/api/sit/issuer-modes":
-            self._handle_issuer_modes()
-            return
-        if path == "/api/sit/wording-profiles":
-            self._handle_wording_profiles(query)
-            return
-        if path.startswith("/static/"):
-            self._serve_static(unquote(path.removeprefix("/static/")))
-            return
-        self._json_response({"error": "Not found"}, HTTPStatus.NOT_FOUND)
+        try:
+            parsed = urlsplit(self.path)
+            path = parsed.path
+            query = parse_qs(parsed.query)
+            if path == "/":
+                self._serve_static("index.html")
+                return
+            if path == "/api/sit/browser-cases":
+                self._handle_browser_cases(query)
+                return
+            if path == "/api/sit/issuer-modes":
+                self._handle_issuer_modes()
+                return
+            if path == "/api/sit/wording-profiles":
+                self._handle_wording_profiles(query)
+                return
+            if path == "/api/sit/runs":
+                self._handle_sit_run_history()
+                return
+            if path.startswith("/api/sit/runs/"):
+                self._handle_saved_sit_run_path(path)
+                return
+            if path.startswith("/static/"):
+                self._serve_static(unquote(path.removeprefix("/static/")))
+                return
+            self._json_response({"error": "Not found"}, HTTPStatus.NOT_FOUND)
+        except FileNotFoundError:
+            self._json_response({"error": "Saved run was not found."}, HTTPStatus.NOT_FOUND)
+        except ValueError as exc:
+            self._json_response({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
 
     def do_POST(self) -> None:
         try:
@@ -105,6 +119,12 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
                 return
             if path == "/api/sit/run":
                 self._handle_sit_run()
+                return
+            if path == "/api/sit/runs":
+                self._handle_save_sit_run()
+                return
+            if path == "/api/sit/reports/html":
+                self._handle_current_html_report()
                 return
             if path == "/api/sit/wording-profiles/import":
                 self._handle_wording_profile_import()
@@ -356,6 +376,32 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
             }
         )
 
+    def _handle_save_sit_run(self) -> None:
+        run = normalize_completed_run(self._read_json_body())
+        self._run_repository().save(run)
+        self._json_response({"ok": True, "run": run})
+
+    def _handle_sit_run_history(self) -> None:
+        self._json_response({"ok": True, "runs": self._run_repository().list()})
+
+    def _handle_saved_sit_run_path(self, path: str) -> None:
+        relative = unquote(path.removeprefix("/api/sit/runs/"))
+        report_suffix = "/report.html"
+        if relative.endswith(report_suffix):
+            run_id = relative[: -len(report_suffix)]
+            run = self._run_repository().load(run_id)
+            self._html_response(
+                render_html_report(run),
+                html_report_filename(run),
+            )
+            return
+        run = self._run_repository().load(relative)
+        self._json_response({"ok": True, "run": run})
+
+    def _handle_current_html_report(self) -> None:
+        run = normalize_completed_run(self._read_json_body())
+        self._html_response(render_html_report(run), html_report_filename(run))
+
     def _read_json_body(self) -> dict[str, Any]:
         raw_body = self._read_text_body()
         value = json.loads(raw_body or "{}")
@@ -365,6 +411,9 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
 
     def _wording_profiles_path(self) -> Path | None:
         return getattr(self.server, "wording_profiles_path", None)
+
+    def _run_repository(self) -> RunRepository:
+        return RunRepository(Path(getattr(self.server, "runs_path")))
 
     def _read_text_body(self) -> str:
         length = int(self.headers.get("Content-Length", "0"))
@@ -378,6 +427,15 @@ class AcsAutoSitHandler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(encoded)
+
+    def _html_response(self, data: bytes, filename: str) -> None:
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(data)
 
     def _serve_static(self, relative_path: str) -> None:
         path = (STATIC_ROOT / relative_path).resolve()
@@ -402,9 +460,11 @@ def create_server(
     port: int = 8000,
     *,
     wording_profiles_path: Path | None = None,
+    runs_path: Path | None = None,
 ) -> ThreadingHTTPServer:
     server = ThreadingHTTPServer((host, port), AcsAutoSitHandler)
     server.wording_profiles_path = wording_profiles_path  # type: ignore[attr-defined]
+    server.runs_path = runs_path or (PROJECT_ROOT / "data" / "sit-runs")  # type: ignore[attr-defined]
     return server
 
 

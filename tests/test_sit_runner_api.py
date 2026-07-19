@@ -3,6 +3,7 @@ from copy import deepcopy
 from http.server import ThreadingHTTPServer
 from threading import Thread
 from urllib import request
+from urllib.error import HTTPError
 
 import pytest
 
@@ -2414,6 +2415,129 @@ def test_prompt_case_reports_acs_error_without_runner_exception(monkeypatch):
     assert "ACS Erro 403" in result["reason"]
     assert "slowly processing" in result["reason"]
     assert result["details"]["ares"]["messageType"] == "Erro"
+
+
+def test_saved_run_history_and_html_report_api(tmp_path):
+    app_server = create_server("127.0.0.1", 0, runs_path=tmp_path / "runs")
+    app_thread = Thread(target=app_server.serve_forever, daemon=True)
+    app_thread.start()
+    completed = _completed_run_payload()
+
+    try:
+        saved = _api_json(app_server, "/api/sit/runs", completed)
+        history = _api_json(app_server, "/api/sit/runs")
+        loaded = _api_json(app_server, f"/api/sit/runs/{completed['runId']}")
+        current_html, current_headers = _api_bytes(
+            app_server,
+            "/api/sit/reports/html",
+            completed,
+        )
+        saved_html, saved_headers = _api_bytes(
+            app_server,
+            f"/api/sit/runs/{completed['runId']}/report.html",
+        )
+    finally:
+        _stop_server(app_server, app_thread)
+
+    assert saved["ok"] is True
+    assert saved["run"]["runId"] == completed["runId"]
+    assert history["runs"][0]["runId"] == completed["runId"]
+    assert loaded["run"]["results"][0]["acsTransID"] == "acs-1"
+    assert b"ACS Auto SIT Report" in current_html
+    assert b"ACS Auto SIT Report" in saved_html
+    for headers in (current_headers, saved_headers):
+        assert headers.get_content_type() == "text/html"
+        assert "sit-report-V-case01" in headers["Content-Disposition"]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"runId": "empty", "execution": {"selectedCaseIds": []}, "results": []},
+        {
+            "runId": "running",
+            "execution": {"selectedCaseIds": ["case01"]},
+            "results": [{"caseId": "case01", "status": "running"}],
+        },
+    ],
+)
+def test_save_run_api_rejects_empty_or_incomplete_run(tmp_path, payload):
+    app_server = create_server("127.0.0.1", 0, runs_path=tmp_path / "runs")
+    app_thread = Thread(target=app_server.serve_forever, daemon=True)
+    app_thread.start()
+
+    try:
+        with pytest.raises(HTTPError) as error:
+            _api_json(app_server, "/api/sit/runs", payload)
+    finally:
+        _stop_server(app_server, app_thread)
+
+    assert error.value.code == 400
+
+
+def test_saved_run_api_rejects_invalid_or_missing_run_id(tmp_path):
+    app_server = create_server("127.0.0.1", 0, runs_path=tmp_path / "runs")
+    app_thread = Thread(target=app_server.serve_forever, daemon=True)
+    app_thread.start()
+
+    try:
+        with pytest.raises(HTTPError) as invalid:
+            _api_json(app_server, "/api/sit/runs/%2E%2E%2Fsecret")
+        with pytest.raises(HTTPError) as missing:
+            _api_json(app_server, "/api/sit/runs/missing")
+    finally:
+        _stop_server(app_server, app_thread)
+
+    assert invalid.value.code == 400
+    assert missing.value.code == 404
+
+
+def _completed_run_payload():
+    return {
+        "runId": "run-1",
+        "startedAt": "2026-07-20T00:15:30+08:00",
+        "finishedAt": "2026-07-20T00:16:00+08:00",
+        "execution": {
+            "issuerMode": "sms_otp",
+            "effectivePreferredChallenge": "sms",
+            "wordingLocale": "zh_TW",
+            "areqUrl": "https://acs.example/auth/V/220/issuer-1/123/areq",
+            "selectedCaseIds": ["case01"],
+        },
+        "results": [
+            {
+                "caseId": "case01",
+                "status": "pass",
+                "areqSentAt": "2026-07-20T00:15:30.214+08:00",
+                "durationMs": 2400,
+                "details": {"ares": {"acsTransID": "acs-1"}},
+            }
+        ],
+    }
+
+
+def _api_json(app_server, path, payload=None):
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    req = request.Request(
+        f"http://127.0.0.1:{app_server.server_port}{path}",
+        data=data,
+        headers={"Content-Type": "application/json"} if data else {},
+        method="POST" if data else "GET",
+    )
+    with request.urlopen(req, timeout=5) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _api_bytes(app_server, path, payload=None):
+    data = json.dumps(payload).encode("utf-8") if payload is not None else None
+    req = request.Request(
+        f"http://127.0.0.1:{app_server.server_port}{path}",
+        data=data,
+        headers={"Content-Type": "application/json"} if data else {},
+        method="POST" if data else "GET",
+    )
+    with request.urlopen(req, timeout=5) as response:
+        return response.read(), response.headers
 
 
 def _stop_server(app_server: ThreadingHTTPServer, app_thread: Thread) -> None:
