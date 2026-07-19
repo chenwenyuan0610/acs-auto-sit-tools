@@ -12,7 +12,10 @@
         <h1>ACS Auto SIT</h1>
         <p>3DS 瀏覽器 AReq / CReq POST 測試工具</p>
       </div>
-      <div id="status" class="status-pill">待命</div>
+      <div class="app-header-actions">
+        <button class="header-results-button" type="button" role="tab" aria-selected="false" aria-controls="caseResultsPanel" data-case-view="caseResultsPanel">測試結果</button>
+        <div id="status" class="status-pill">待命</div>
+      </div>
     </header>
 
     <section id="caseAdvancedPanel" class="workspace case-control-view advanced-tools-view" role="tabpanel" hidden>
@@ -177,7 +180,6 @@
         <div class="case-panel-shell">
           <nav class="case-sidebar" role="tablist" aria-label="SIT 控制">
             <button class="case-sidebar-button active" type="button" role="tab" aria-selected="true" aria-controls="caseExecutionPanel" data-case-view="caseExecutionPanel">執行案例</button>
-            <button class="case-sidebar-button" type="button" role="tab" aria-selected="false" aria-controls="caseResultsPanel" data-case-view="caseResultsPanel">測試結果</button>
             <button class="case-sidebar-button" type="button" role="tab" aria-selected="false" aria-controls="caseSettingsPanel" data-case-view="caseSettingsPanel">設定</button>
             <button class="case-sidebar-button" type="button" role="tab" aria-selected="false" aria-controls="caseAdvancedPanel" data-case-view="caseAdvancedPanel">進階工具</button>
           </nav>

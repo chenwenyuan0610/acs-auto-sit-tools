@@ -32,6 +32,26 @@ body {
   padding: 14px 24px;
 }
 
+.app-header-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.header-results-button {
+  background: #ffffff;
+  border-color: var(--primary);
+  color: var(--primary-dark);
+  white-space: nowrap;
+}
+
+.header-results-button:hover,
+.header-results-button.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+}
+
 h1 {
   font-size: 22px;
   font-weight: 700;
@@ -958,6 +978,21 @@ h2 {
     align-items: flex-start;
     gap: 12px;
     padding: 14px 16px;
+  }
+
+  .app-header-actions {
+    flex-shrink: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .app-header-actions {
+    justify-content: space-between;
   }
 }
 
