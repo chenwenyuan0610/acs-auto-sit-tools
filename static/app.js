@@ -73,6 +73,27 @@ const currentAcsUrlEl = document.querySelector("#currentAcsUrl");
 const currentCardNumberEl = document.querySelector("#currentCardNumber");
 const openCaseSettingsButton = document.querySelector("#openCaseSettings");
 const quickStartHelpEl = document.querySelector("#quickStartHelp");
+const sitSettingsPersistenceStatusEl = document.querySelector("#sitSettingsPersistenceStatus");
+
+const SIT_SETTINGS_STORAGE_KEY = "hitrust.acs-auto-sit.settings.v1";
+const sitSettingControls = {
+  issuerProfile: issuerProfileInput,
+  wordingLocale: wordingLocaleInput,
+  sitAreqUrl: sitAreqUrlInput,
+  validCardNumber: validCardNumberInput,
+  invalidCardNumber: invalidCardNumberInput,
+  otpFailureMaxAttempts: otpFailureMaxAttemptsInput,
+  caseDelaySeconds: caseDelaySecondsInput,
+  includeSlowCases: includeSlowCasesInput,
+  otpExpiryWaitSeconds: otpExpiryWaitSecondsInput,
+  issuerMode: issuerModeInput,
+  preferredChallenge: preferredChallengeInput,
+  otpSourceMode: otpSourceModeInput,
+  otpLookupUrl: otpLookupUrlInput,
+  transactionResultUrl: transactionResultUrlInput,
+  successOtp: successOtpInput,
+  failureOtp: failureOtpInput,
+};
 
 let evidence = [];
 let sitCases = [];
@@ -80,6 +101,72 @@ let issuerModes = [];
 let selectedCaseId = "";
 let caseResults = {};
 let currentSitRun = null;
+
+function readPersistedSitSettings() {
+  try {
+    return JSON.parse(window.localStorage.getItem(SIT_SETTINGS_STORAGE_KEY) || "null");
+  } catch (_error) {
+    return null;
+  }
+}
+
+function restorePersistedSitSettings(settings) {
+  if (!settings || typeof settings !== "object") {
+    return;
+  }
+  for (const [key, control] of Object.entries(sitSettingControls)) {
+    if (!control || settings[key] === undefined) {
+      continue;
+    }
+    if (control.type === "checkbox") {
+      control.checked = Boolean(settings[key]);
+      continue;
+    }
+    const value = String(settings[key]);
+    if (control instanceof HTMLSelectElement) {
+      const optionExists = Array.from(control.options).some((option) => option.value === value);
+      if (!optionExists) {
+        continue;
+      }
+    }
+    control.value = value;
+  }
+  if (otpExpiryWaitSecondsInput) {
+    otpExpiryWaitSecondsInput.disabled = !includeSlowCasesInput?.checked;
+  }
+}
+
+function persistSitSettings() {
+  const settings = {};
+  for (const [key, control] of Object.entries(sitSettingControls)) {
+    if (!control) {
+      continue;
+    }
+    settings[key] = control.type === "checkbox" ? control.checked : control.value;
+  }
+  try {
+    window.localStorage.setItem(SIT_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+    if (sitSettingsPersistenceStatusEl) {
+      sitSettingsPersistenceStatusEl.textContent = "測試設定已自動儲存在此瀏覽器";
+    }
+  } catch (_error) {
+    if (sitSettingsPersistenceStatusEl) {
+      sitSettingsPersistenceStatusEl.textContent = "瀏覽器不允許儲存設定，重新整理後可能需要重新設定";
+    }
+  }
+}
+
+function bindSitSettingsPersistence() {
+  for (const control of Object.values(sitSettingControls)) {
+    if (!control) {
+      continue;
+    }
+    const eventName = control instanceof HTMLSelectElement || control.type === "checkbox"
+      ? "change"
+      : "input";
+    control.addEventListener(eventName, persistSitSettings);
+  }
+}
 
 function parseJsonField(field, label) {
   try {
@@ -1492,13 +1579,23 @@ sendAreqButton.addEventListener("click", async () => {
 });
 
 async function initializeSitRunner() {
+  const persistedSettings = readPersistedSitSettings();
+  restorePersistedSitSettings(persistedSettings);
   await loadIssuerModes();
-  await loadWordingProfiles();
+  restorePersistedSitSettings(persistedSettings);
+  updatePreferredChallengeGuard();
+  await loadWordingProfiles(persistedSettings?.issuerProfile || issuerProfileInput?.value || "default");
+  restorePersistedSitSettings(persistedSettings);
   await loadSitCases();
   await loadSavedRuns();
+  renderCurrentSettingsSummary();
+  if (persistedSettings && sitSettingsPersistenceStatusEl) {
+    sitSettingsPersistenceStatusEl.textContent = "已還原上次儲存在此瀏覽器的測試設定";
+  }
 }
 
 renderCurrentSettingsSummary();
+bindSitSettingsPersistence();
 initializeSitRunner();
 renderSitRunSummary(null);
 renderSitRunDashboard(null);

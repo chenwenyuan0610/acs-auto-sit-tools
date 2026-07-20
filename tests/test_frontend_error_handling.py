@@ -446,6 +446,43 @@ def test_current_settings_summary_updates_from_existing_controls_and_case_state(
     assert "renderCurrentSettingsSummary();" in app_js
 
 
+def test_sit_settings_are_saved_locally_and_restored_after_async_options_load():
+    index_html = Path("static/index.html").read_text(encoding="utf-8")
+    app_js = Path("static/app.js").read_text(encoding="utf-8")
+
+    assert 'id="sitSettingsPersistenceStatus"' in index_html
+    assert 'const SIT_SETTINGS_STORAGE_KEY = "hitrust.acs-auto-sit.settings.v1"' in app_js
+    assert "window.localStorage.getItem(SIT_SETTINGS_STORAGE_KEY)" in app_js
+    assert "window.localStorage.setItem(SIT_SETTINGS_STORAGE_KEY" in app_js
+    assert "function restorePersistedSitSettings" in app_js
+    assert "function persistSitSettings" in app_js
+    assert "function bindSitSettingsPersistence" in app_js
+    assert "await loadIssuerModes();" in app_js
+    assert "restorePersistedSitSettings(persistedSettings);" in app_js
+    assert "await loadWordingProfiles(persistedSettings?.issuerProfile" in app_js
+    for setting_id in (
+        "issuerProfile",
+        "wordingLocale",
+        "sitAreqUrl",
+        "validCardNumber",
+        "invalidCardNumber",
+        "otpFailureMaxAttempts",
+        "caseDelaySeconds",
+        "includeSlowCases",
+        "otpExpiryWaitSeconds",
+        "issuerMode",
+        "preferredChallenge",
+        "otpSourceMode",
+        "otpLookupUrl",
+        "transactionResultUrl",
+        "successOtp",
+        "failureOtp",
+    ):
+        assert f'{setting_id}: {setting_id}Input' in app_js
+
+    assert "/static/app.js?v=20260720-settings-persistence" in index_html
+
+
 def test_guidance_and_settings_summary_have_responsive_styles():
     index_html = Path("static/index.html").read_text(encoding="utf-8")
     styles = Path("static/styles.css").read_text(encoding="utf-8")
@@ -459,6 +496,6 @@ def test_guidance_and_settings_summary_have_responsive_styles():
     assert ".quick-start-popover" in mobile_rules
     assert "position: fixed" in mobile_rules
     assert "grid-template-columns: 1fr" in mobile_rules
-    assert "/static/styles.css?v=20260720-header-help" in index_html
-    assert "/static/app.js?v=20260720-header-help" in index_html
+    assert "/static/styles.css?v=20260720-settings-persistence" in index_html
+    assert "/static/app.js?v=20260720-settings-persistence" in index_html
     assert '<link rel="icon" href="data:," />' in index_html

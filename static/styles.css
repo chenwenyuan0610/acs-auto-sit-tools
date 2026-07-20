@@ -506,6 +506,12 @@ textarea.evidence {
   overflow-wrap: anywhere;
 }
 
+.settings-persistence-status {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+}
+
 .wording-import-status.error,
 .case-unavailable-reason {
   color: var(--danger);
