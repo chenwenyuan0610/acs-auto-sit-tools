@@ -104,7 +104,11 @@ let currentSitRun = null;
 
 function readPersistedSitSettings() {
   try {
-    return JSON.parse(window.localStorage.getItem(SIT_SETTINGS_STORAGE_KEY) || "null");
+    const settings = JSON.parse(window.localStorage.getItem(SIT_SETTINGS_STORAGE_KEY) || "null");
+    if (settings && settings._version !== 2 && String(settings.caseDelaySeconds) === "1.5") {
+      settings.caseDelaySeconds = "3";
+    }
+    return settings;
   } catch (_error) {
     return null;
   }
@@ -137,7 +141,7 @@ function restorePersistedSitSettings(settings) {
 }
 
 function persistSitSettings() {
-  const settings = {};
+  const settings = { _version: 2 };
   for (const [key, control] of Object.entries(sitSettingControls)) {
     if (!control) {
       continue;
@@ -1371,6 +1375,49 @@ async function loadIssuerModes() {
   }
 }
 
+function summarizeSitCaseResults(caseIds, results) {
+  const summary = {
+    total: caseIds.length,
+    completed: results.length,
+    pass: 0,
+    fail: 0,
+    skipped: 0,
+    error: 0,
+  };
+  for (const item of results) {
+    if (Object.hasOwn(summary, item.status)) {
+      summary[item.status] += 1;
+    }
+  }
+  return summary;
+}
+
+function buildSitRunProgress(latestResponse, caseIds, results, runId, startedAt) {
+  return {
+    ...(latestResponse || {}),
+    ok: true,
+    mode: "live",
+    runId,
+    startedAt,
+    finishedAt: latestResponse?.finishedAt || new Date().toISOString(),
+    execution: {
+      issuerMode: issuerModeInput?.value || "sms_otp",
+      effectivePreferredChallenge: preferredChallengeInput?.value || "auto",
+      wordingLocale: wordingLocaleInput?.value || "all",
+      areqUrl: sitAreqUrlInput?.value || areqUrlInput.value,
+      ...(latestResponse?.execution || {}),
+      selectedCaseIds: [...caseIds],
+    },
+    summary: summarizeSitCaseResults(caseIds, results),
+    results: [...results],
+  };
+}
+
+function waitForCaseDelay(seconds) {
+  const milliseconds = Math.max(0, Number(seconds) || 0) * 1000;
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
 async function runSitCases(caseIds) {
   if (!caseIds.length) {
     setStatus("未選擇案例", true);
@@ -1383,7 +1430,7 @@ async function runSitCases(caseIds) {
   currentSitRun = null;
   setStatus("執行 SIT 案例中");
   for (const caseId of caseIds) {
-    caseResults[caseId] = { caseId, status: "running", reason: "執行中" };
+    caseResults[caseId] = { caseId, status: "pending", reason: "等待執行" };
   }
   renderSitRunSummary({ total: caseIds.length, completed: 0, pass: 0, fail: 0, skipped: 0, error: 0 });
   renderCaseList();
@@ -1392,30 +1439,72 @@ async function runSitCases(caseIds) {
   }
   try {
     updatePreferredChallengeGuard();
-    const result = await postApi("/api/sit/run", {
-      caseIds,
-      mode: "live",
-      runId,
-      startedAt,
-      issuerId: issuerProfileInput?.value || "default",
-      issuerMode: issuerModeInput?.value || "sms_otp",
-      preferredChallenge: preferredChallengeInput?.value || "auto",
-      wordingLocale: wordingLocaleInput?.value || "all",
-      transaction: readCommonEnvelope(
-        sitAreqUrlInput?.value || areqUrlInput.value,
-        parseJsonField(areqPayloadInput, "AReq")
-      ),
-    });
-    for (const item of result.results || []) {
-      caseResults[item.caseId] = item;
+    const caseDelaySeconds = Number(caseDelaySecondsInput?.value || 3);
+    const transaction = readCommonEnvelope(
+      sitAreqUrlInput?.value || areqUrlInput.value,
+      parseJsonField(areqPayloadInput, "AReq")
+    );
+    const completedResults = [];
+    let latestResponse = null;
+
+    for (const [index, caseId] of caseIds.entries()) {
+      if (index > 0) {
+        setStatus(`案例 ${completedResults.length}/${caseIds.length} 已完成，等待 ${caseDelaySeconds} 秒後執行下一筆`);
+        await waitForCaseDelay(caseDelaySeconds);
+      }
+      caseResults[caseId] = { caseId, status: "running", reason: "執行中" };
+      selectedCaseId = caseId;
+      renderCaseList();
+      selectCase(caseId);
+
+      let item;
+      try {
+        const result = await postApi("/api/sit/run", {
+          caseIds: [caseId],
+          mode: "live",
+          runId,
+          startedAt,
+          issuerId: issuerProfileInput?.value || "default",
+          issuerMode: issuerModeInput?.value || "sms_otp",
+          preferredChallenge: preferredChallengeInput?.value || "auto",
+          wordingLocale: wordingLocaleInput?.value || "all",
+          transaction,
+        });
+        latestResponse = result;
+        item = (result.results || [])[0] || {
+          caseId,
+          status: "error",
+          reason: "後端未回傳案例結果",
+          details: {},
+        };
+      } catch (error) {
+        item = {
+          caseId,
+          status: "error",
+          reason: error.message,
+          details: { error: error.message },
+        };
+      }
+
+      caseResults[caseId] = item;
+      completedResults.push(item);
+      const progress = buildSitRunProgress(
+        latestResponse,
+        caseIds,
+        completedResults,
+        runId,
+        startedAt
+      );
+      currentSitRun = progress;
+      renderCaseList();
+      selectCase(caseId);
+      renderSitRunSummary(progress.summary);
+      renderSitRunDashboard(progress);
+      setCaseControlView("caseResultsPanel");
+      setStatus(`案例執行進度 ${progress.summary.completed}/${progress.summary.total}`);
     }
-    currentSitRun = result;
-    renderCaseList();
-    selectCase(selectedCaseId || caseIds[0]);
-    renderSitRunSummary(result.summary);
-    renderSitRunDashboard(currentSitRun);
-    setCaseControlView("caseResultsPanel");
-    setStatus(`執行完成 ${result.summary?.completed || 0}/${result.summary?.total || caseIds.length}，成功 ${result.summary?.pass || 0}，失敗 ${result.summary?.fail || 0}`);
+    const summary = currentSitRun?.summary || summarizeSitCaseResults(caseIds, completedResults);
+    setStatus(`執行完成 ${summary.completed}/${summary.total}，成功 ${summary.pass}，失敗 ${summary.fail}`);
   } catch (error) {
     caseRunOutput.textContent = pretty({ error: error.message });
     setStatus("SIT 執行錯誤", true);

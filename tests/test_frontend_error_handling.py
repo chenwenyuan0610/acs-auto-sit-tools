@@ -319,7 +319,8 @@ def test_frontend_renders_returned_html_in_a_sandboxed_preview():
     assert "flex-direction: column" in mobile_rules
 
 
-def test_sit_run_request_sends_run_identity_and_wording_locale():
+def test_sit_run_requests_each_case_sequentially_and_aggregates_progress():
+    index_html = Path("static/index.html").read_text(encoding="utf-8")
     app_js = Path("static/app.js").read_text(encoding="utf-8")
 
     assert "let currentSitRun = null;" in app_js
@@ -328,7 +329,18 @@ def test_sit_run_request_sends_run_identity_and_wording_locale():
     assert "runId," in app_js
     assert "startedAt," in app_js
     assert 'wordingLocale: wordingLocaleInput?.value || "all"' in app_js
-    assert "currentSitRun = result;" in app_js
+    assert 'id="caseDelaySeconds" type="number" min="0" max="30" step="0.5" value="3"' in index_html
+    assert "function summarizeSitCaseResults" in app_js
+    assert "function buildSitRunProgress" in app_js
+    assert "function waitForCaseDelay" in app_js
+    assert "for (const [index, caseId] of caseIds.entries())" in app_js
+    assert "await waitForCaseDelay(caseDelaySeconds);" in app_js
+    assert "caseIds: [caseId]" in app_js
+    assert "caseResults[caseId] = item;" in app_js
+    assert "currentSitRun = progress;" in app_js
+    assert "renderSitRunSummary(progress.summary);" in app_js
+    assert "selectedCaseIds: [...caseIds]" in app_js
+    assert "/static/app.js?v=20260720-sequential-runs" in index_html
 
 
 def test_result_dashboard_has_context_actions_history_and_no_bulk_copy():
@@ -480,7 +492,7 @@ def test_sit_settings_are_saved_locally_and_restored_after_async_options_load():
     ):
         assert f'{setting_id}: {setting_id}Input' in app_js
 
-    assert "/static/app.js?v=20260720-settings-persistence" in index_html
+    assert "/static/app.js?v=20260720-sequential-runs" in index_html
 
 
 def test_guidance_and_settings_summary_have_responsive_styles():
@@ -497,5 +509,5 @@ def test_guidance_and_settings_summary_have_responsive_styles():
     assert "position: fixed" in mobile_rules
     assert "grid-template-columns: 1fr" in mobile_rules
     assert "/static/styles.css?v=20260720-settings-persistence" in index_html
-    assert "/static/app.js?v=20260720-settings-persistence" in index_html
+    assert "/static/app.js?v=20260720-sequential-runs" in index_html
     assert '<link rel="icon" href="data:," />' in index_html
