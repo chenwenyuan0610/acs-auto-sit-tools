@@ -100,7 +100,7 @@ def test_preferred_challenge_is_guarded_for_single_destination_modes():
     assert "preferredChallengeInput.disabled = true" in app_js
     assert 'preferredChallengeInput?.addEventListener("change", async () => {' in app_js
     assert "await loadSitCases()" in app_js
-    assert "sitCases = result.cases || [];\n    caseResults = {};" in app_js
+    assert "sitCases = result.cases || [];" in app_js
     assert 'selectedCaseId = sitCases[0]?.id || "";' in app_js
 
 
@@ -345,7 +345,26 @@ def test_sit_run_requests_each_case_sequentially_and_aggregates_progress():
         app_js.index("function refreshAreqTransactionIds")
     ]
     assert 'setCaseControlView("caseResultsPanel")' not in run_block
-    assert "/static/app.js?v=20260720-manual-results" in index_html
+    assert "/static/app.js?v=20260720-accumulated-results" in index_html
+
+
+def test_sit_results_accumulate_across_reruns_until_page_refresh():
+    app_js = Path("static/app.js").read_text(encoding="utf-8")
+
+    run_block = app_js[
+        app_js.index("async function runSitCases(caseIds)"):
+        app_js.index("function refreshAreqTransactionIds")
+    ]
+    load_block = app_js[
+        app_js.index("async function loadSitCases()"):
+        app_js.index("async function loadWordingProfiles")
+    ]
+
+    assert "function mergeSitCaseIds" in app_js
+    assert "const sessionCaseIds = mergeSitCaseIds" in run_block
+    assert "accumulatedSitResults(sessionCaseIds)" in run_block
+    assert "currentSitRun = null;" not in run_block
+    assert "caseResults = {};" not in load_block
 
 
 def test_result_dashboard_has_context_actions_history_and_no_bulk_copy():
@@ -497,7 +516,7 @@ def test_sit_settings_are_saved_locally_and_restored_after_async_options_load():
     ):
         assert f'{setting_id}: {setting_id}Input' in app_js
 
-    assert "/static/app.js?v=20260720-manual-results" in index_html
+    assert "/static/app.js?v=20260720-accumulated-results" in index_html
 
 
 def test_guidance_and_settings_summary_have_responsive_styles():
@@ -514,5 +533,5 @@ def test_guidance_and_settings_summary_have_responsive_styles():
     assert "position: fixed" in mobile_rules
     assert "grid-template-columns: 1fr" in mobile_rules
     assert "/static/styles.css?v=20260720-settings-persistence" in index_html
-    assert "/static/app.js?v=20260720-manual-results" in index_html
+    assert "/static/app.js?v=20260720-accumulated-results" in index_html
     assert '<link rel="icon" href="data:," />' in index_html

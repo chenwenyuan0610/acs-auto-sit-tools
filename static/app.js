@@ -1259,9 +1259,6 @@ async function loadSitCases() {
     });
     const result = await getApi(`/api/sit/browser-cases?${params}`);
     sitCases = result.cases || [];
-    caseResults = {};
-    currentSitRun = null;
-    renderSitRunDashboard(null);
     caseCountEl.textContent = `${result.caseCount || sitCases.length} 個案例`;
     selectedCaseId = sitCases[0]?.id || "";
     renderCaseList();
@@ -1392,6 +1389,17 @@ function summarizeSitCaseResults(caseIds, results) {
   return summary;
 }
 
+function mergeSitCaseIds(existingCaseIds, requestedCaseIds) {
+  return [...new Set([...(existingCaseIds || []), ...(requestedCaseIds || [])])];
+}
+
+function accumulatedSitResults(caseIds) {
+  const terminalStatuses = new Set(["pass", "fail", "skipped", "error"]);
+  return caseIds
+    .map((caseId) => caseResults[caseId])
+    .filter((item) => item && terminalStatuses.has(item.status));
+}
+
 function buildSitRunProgress(latestResponse, caseIds, results, runId, startedAt) {
   return {
     ...(latestResponse || {}),
@@ -1427,12 +1435,25 @@ async function runSitCases(caseIds) {
   runAllCasesButton.disabled = true;
   const startedAt = new Date().toISOString();
   const runId = `${startedAt.replaceAll(/[-:.]/g, "")}-${crypto.randomUUID().slice(0, 8)}`;
-  currentSitRun = null;
+  const sessionStartedAt = currentSitRun?.startedAt || startedAt;
+  const sessionCaseIds = mergeSitCaseIds(
+    currentSitRun?.execution?.selectedCaseIds,
+    caseIds
+  );
   setStatus("執行 SIT 案例中");
   for (const caseId of caseIds) {
     caseResults[caseId] = { caseId, status: "pending", reason: "等待執行" };
   }
-  renderSitRunSummary({ total: caseIds.length, completed: 0, pass: 0, fail: 0, skipped: 0, error: 0 });
+  const existingResults = accumulatedSitResults(sessionCaseIds);
+  currentSitRun = buildSitRunProgress(
+    currentSitRun,
+    sessionCaseIds,
+    existingResults,
+    runId,
+    sessionStartedAt
+  );
+  renderSitRunSummary(currentSitRun.summary);
+  renderSitRunDashboard(currentSitRun);
   renderCaseList();
   if (selectedCaseId) {
     selectCase(selectedCaseId);
@@ -1488,12 +1509,13 @@ async function runSitCases(caseIds) {
 
       caseResults[caseId] = item;
       completedResults.push(item);
+      const sessionResults = accumulatedSitResults(sessionCaseIds);
       const progress = buildSitRunProgress(
         latestResponse,
-        caseIds,
-        completedResults,
+        sessionCaseIds,
+        sessionResults,
         runId,
-        startedAt
+        sessionStartedAt
       );
       currentSitRun = progress;
       renderCaseList();
