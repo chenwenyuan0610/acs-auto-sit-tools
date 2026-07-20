@@ -1608,6 +1608,69 @@ def test_live_runner_uses_transaction_result_lookup_for_rreq_criteria(monkeypatc
     assert result["details"]["transactionResult"]["mismatches"] == {}
 
 
+@pytest.mark.parametrize(
+    ("card_scheme", "message_category", "actual_eci", "expected_eci"),
+    [
+        ("V", "01", "07", "07"),
+        ("M", "01", "00", "00"),
+        ("M", "02", "N0", "N0"),
+        ("C", "01", None, "null"),
+    ],
+)
+def test_failed_transaction_eci_expectation_depends_on_card_scheme_and_category(
+    monkeypatch,
+    card_scheme,
+    message_category,
+    actual_eci,
+    expected_eci,
+):
+    monkeypatch.setattr(
+        server_module,
+        "lookup_transaction_result_for_acs_trans_id",
+        lambda *args, **kwargs: {
+            "ok": True,
+            "transaction": {"transStatus": "N", "eci": actual_eci},
+        },
+    )
+
+    result = server_module._lookup_expected_transaction_result(
+        {"RReq": {"transStatus": "N", "eci": "source-value"}},
+        {"ares": {"acsTransID": "acs-failed-1"}},
+        {
+            "url": f"https://acs.example/acs-auth-v3/auth/{card_scheme}/220/issuer/123/areq",
+            "payload": {"messageCategory": message_category},
+            "timeoutSeconds": 1,
+        },
+    )
+
+    assert result["expected"]["eci"] == expected_eci
+    assert result["mismatches"] == {}
+
+
+def test_successful_transaction_keeps_case_eci_expectation(monkeypatch):
+    monkeypatch.setattr(
+        server_module,
+        "lookup_transaction_result_for_acs_trans_id",
+        lambda *args, **kwargs: {
+            "ok": True,
+            "transaction": {"transStatus": "Y", "eci": "05"},
+        },
+    )
+
+    result = server_module._lookup_expected_transaction_result(
+        {"RReq": {"transStatus": "Y", "eci": "05"}},
+        {"ares": {"acsTransID": "acs-success-1"}},
+        {
+            "url": "https://acs.example/acs-auth-v3/auth/M/220/issuer/123/areq",
+            "payload": {"messageCategory": "02"},
+            "timeoutSeconds": 1,
+        },
+    )
+
+    assert result["expected"]["eci"] == "05"
+    assert result["mismatches"] == {}
+
+
 def test_live_runner_matches_case10_to_case12_ares_only_results(monkeypatch):
     responses = [
         {"transStatus": "N", "transStatusReason": "08"},

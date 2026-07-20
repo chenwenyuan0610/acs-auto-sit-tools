@@ -36,7 +36,7 @@ from acs_auto_sit.otp_provider import (
 )
 from acs_auto_sit.run_report import html_report_filename, render_html_report
 from acs_auto_sit.run_repository import RunRepository
-from acs_auto_sit.run_results import normalize_completed_run
+from acs_auto_sit.run_results import normalize_completed_run, parse_areq_route
 from acs_auto_sit.sit_runner import browser_cases_by_id, dry_run_cases, live_skip_reason, load_browser_case_catalog
 from acs_auto_sit.three_ds import (
     build_first_creq,
@@ -989,7 +989,7 @@ def _lookup_expected_transaction_result(
     run_result: dict[str, Any],
     envelope: dict[str, Any],
 ) -> dict[str, Any]:
-    expected_rreq = expected_messages.get("RReq") or {}
+    expected_rreq = _expected_rreq_for_transaction(expected_messages, envelope)
     if not isinstance(expected_rreq, dict) or not expected_rreq:
         return {}
 
@@ -1011,6 +1011,41 @@ def _lookup_expected_transaction_result(
         "lookup": lookup,
         "error": lookup.get("error") if not lookup.get("ok") else "",
     }
+
+
+def _expected_rreq_for_transaction(
+    expected_messages: dict[str, Any],
+    envelope: dict[str, Any],
+) -> dict[str, Any]:
+    source = expected_messages.get("RReq") or {}
+    if not isinstance(source, dict):
+        return {}
+    expected = deepcopy(source)
+    if str(expected.get("transStatus") or "") != "N":
+        return expected
+
+    card_scheme = parse_areq_route(str(envelope.get("url") or "")).get("cardScheme", "").upper()
+    payload = envelope.get("payload") if isinstance(envelope.get("payload"), dict) else {}
+    message_category = str(payload.get("messageCategory") or "").upper()
+    failure_eci = _failure_eci(card_scheme, message_category)
+    if failure_eci is not None:
+        expected["eci"] = failure_eci
+    return expected
+
+
+def _failure_eci(card_scheme: str, message_category: str) -> str | None:
+    if card_scheme == "V":
+        return "07"
+    if card_scheme == "C":
+        return "null"
+    if card_scheme == "M":
+        return {
+            "01": "00",
+            "PA": "00",
+            "02": "N0",
+            "NPA": "N0",
+        }.get(message_category)
+    return None
 
 
 def _acs_trans_id_from_run_result(run_result: dict[str, Any]) -> str:
