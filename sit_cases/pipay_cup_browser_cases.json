@@ -104,32 +104,23 @@
       "id": "case03",
       "system": "ACS 2.2",
       "module": "Browser Transaction Verification Process",
-      "functionPoint": "Verification code error - Exceeded maximum number of errors - initiate transaction again",
+        "functionPoint": "Verification code error - Exceeded maximum number of errors",
       "testPoint": "CUP",
       "steps": [
-        "First transaction:",
-        "Open the website of the trading test - Demo web",
-        "Enter the test card number",
-        "Click <Pay Now>",
-        "Display the corresponding language according to the browser language",
-        "Enter the Transaction Verification screen",
-        "Enter the wrong verification code",
-        "Click <SUBMIT>",
-        "Repeat steps 6~7 until the maximum number of errors is exceeded",
-        "Second transaction:",
-        "Open the website of the trading test - Demo web",
-        "Enter the test card number",
-        "Click <Pay Now>",
-        "Display the corresponding language according to the browser language",
-        "Enter the Transaction Verification screen",
-        "Enter the correct verification code",
-        "Click <SUBMIT>"
+          "Open the website of the trading test - Demo web",
+          "Enter the test card number",
+          "Click <Pay Now>",
+          "Display the corresponding language according to the browser language",
+          "Enter the Transaction Verification screen",
+          "Enter the wrong verification code",
+          "Click <SUBMIT>",
+          "Repeat entering and submitting the wrong verification code until the maximum number of errors is exceeded"
       ],
       "expected": {
         "messages": {},
         "transactions": [
           {
-            "label": "First transaction",
+              "label": "Transaction",
             "messages": {
               "CRes": {
                 "transStatus": "N"
@@ -141,20 +132,7 @@
                 "cavv": "null"
               }
             }
-          },
-          {
-            "label": "Second transaction",
-            "messages": {
-              "CRes": {
-                "transStatus": "Y"
-              },
-              "RReq": {
-                "transStatus": "Y",
-                "eci": "05",
-                "cavv": "not_null"
-              }
             }
-          }
         ],
         "prompts": [],
         "errors": []

@@ -40,6 +40,23 @@ def test_direct_otp_case_plan_uses_failure_then_success_for_recovery_case():
     ]
 
 
+def test_case03_plan_stops_after_one_max_failure_transaction():
+    plan = build_direct_otp_case_plan(_case_by_id("case03"))
+
+    assert [action["type"] for action in plan["actions"]] == [
+        "send_areq",
+        "submit_otp",
+        "submit_otp",
+        "submit_otp",
+        "expect_transaction",
+    ]
+    assert {
+        action.get("otpPurpose")
+        for action in plan["actions"]
+        if action["type"] == "submit_otp"
+    } == {"failure"}
+
+
 def test_customer_generated_otp_uses_configured_success_and_failure_values():
     settings = OtpSettings(
         source_mode="customer_generated",

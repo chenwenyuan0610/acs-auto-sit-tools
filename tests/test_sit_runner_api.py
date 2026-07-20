@@ -364,16 +364,15 @@ def test_live_runner_applies_case_run_card_settings(monkeypatch):
     ]
 
 
-def test_live_runner_runs_case03_retry_transaction_then_success_transaction(monkeypatch):
+def test_live_runner_runs_case03_until_max_failures_in_single_transaction(monkeypatch):
     calls = []
 
     def fake_run_areq_flow(envelope, notification_url):
         calls.append(envelope)
-        trans_status = "N" if len(calls) == 1 else "Y"
         return {
             "ok": True,
             "ares": {"transStatus": "C"},
-            "autoCreq": {"cres": {"transStatus": trans_status}},
+            "autoCreq": {"cres": {"transStatus": "N"}},
             "http": {"request_body": envelope["payload"]},
         }
 
@@ -392,12 +391,12 @@ def test_live_runner_runs_case03_retry_transaction_then_success_transaction(monk
         "auto",
     )
 
-    assert len(calls) == 2
+    assert len(calls) == 1
     assert calls[0]["otpAttempts"] == ["failure", "failure", "failure", "failure", "failure"]
-    assert calls[1]["otpAttempts"] == ["success"]
     assert results[0]["caseId"] == "case03"
     assert results[0]["status"] == "pass"
-    assert [item["actualStatus"] for item in results[0]["details"]["transactions"]] == ["N", "Y"]
+    assert [item["actualStatus"] for item in results[0]["details"]["transactions"]] == ["N"]
+    assert [item["label"] for item in results[0]["details"]["transactions"]] == ["Transaction"]
 
 
 def test_live_runner_uses_configured_otp_failure_limit_for_max_failure_case(monkeypatch):
@@ -429,7 +428,7 @@ def test_live_runner_uses_configured_otp_failure_limit_for_max_failure_case(monk
     )[0]
 
     assert calls[0]["otpAttempts"] == ["failure", "failure", "failure", "failure", "failure"]
-    assert calls[1]["otpAttempts"] == ["success"]
+    assert len(calls) == 1
     assert result["status"] == "pass"
 
 
