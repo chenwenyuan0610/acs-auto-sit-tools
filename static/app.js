@@ -69,8 +69,8 @@ const currentIssuerProfileEl = document.querySelector("#currentIssuerProfile");
 const currentIssuerModeEl = document.querySelector("#currentIssuerMode");
 const currentPreferredChallengeEl = document.querySelector("#currentPreferredChallenge");
 const currentWordingLocaleEl = document.querySelector("#currentWordingLocale");
-const currentAvailableCasesEl = document.querySelector("#currentAvailableCases");
-const currentSelectedCasesEl = document.querySelector("#currentSelectedCases");
+const currentAcsUrlEl = document.querySelector("#currentAcsUrl");
+const currentCardNumberEl = document.querySelector("#currentCardNumber");
 const openCaseSettingsButton = document.querySelector("#openCaseSettings");
 
 let evidence = [];
@@ -1007,8 +1007,6 @@ function selectedOptionLabel(select, fallback) {
 
 function renderCurrentSettingsSummary() {
   const mode = selectedIssuerMode();
-  const availableCount = sitCases.filter((caseItem) => caseItem.availability?.enabled !== false).length;
-  const selectedCount = checkedCaseIds().length;
 
   if (currentIssuerProfileEl) {
     currentIssuerProfileEl.textContent = selectedOptionLabel(issuerProfileInput, "預設發卡行");
@@ -1022,11 +1020,11 @@ function renderCurrentSettingsSummary() {
   if (currentWordingLocaleEl) {
     currentWordingLocaleEl.textContent = selectedOptionLabel(wordingLocaleInput, "全部語系");
   }
-  if (currentAvailableCasesEl) {
-    currentAvailableCasesEl.textContent = String(availableCount);
+  if (currentAcsUrlEl) {
+    currentAcsUrlEl.textContent = sitAreqUrlInput?.value?.trim() || "尚未設定";
   }
-  if (currentSelectedCasesEl) {
-    currentSelectedCasesEl.textContent = String(selectedCount);
+  if (currentCardNumberEl) {
+    currentCardNumberEl.textContent = validCardNumberInput?.value?.trim() || "尚未設定";
   }
 }
 
@@ -1392,6 +1390,9 @@ downloadSitReportButton?.addEventListener("click", async () => {
 selectAllCasesInput?.addEventListener("change", () => {
   setCaseCheckboxes(selectAllCasesInput.checked);
 });
+
+sitAreqUrlInput?.addEventListener("input", renderCurrentSettingsSummary);
+validCardNumberInput?.addEventListener("input", renderCurrentSettingsSummary);
 
 runSelectedCasesButton?.addEventListener("click", () => runSitCases(checkedCaseIds()));
 

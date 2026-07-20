@@ -61,8 +61,12 @@ body {
 .current-settings-grid {
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 0;
+}
+
+.current-settings-url {
+  grid-column: span 3;
 }
 
 .current-settings-grid div {
@@ -138,9 +142,38 @@ p {
   padding: 18px;
 }
 
-.execution-guide-heading h2 {
+.execution-guide-summary {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  list-style: none;
+}
+
+.execution-guide-summary::-webkit-details-marker {
+  display: none;
+}
+
+.execution-guide-heading {
+  display: grid;
+  gap: 4px;
+}
+
+.execution-guide-heading strong {
   font-size: 18px;
-  margin: 4px 0 0;
+}
+
+.execution-guide-summary::after {
+  color: var(--primary-dark);
+  content: "收合";
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.execution-guide:not([open]) .execution-guide-summary::after {
+  content: "展開";
 }
 
 .execution-guide-steps {
@@ -1101,7 +1134,11 @@ h2 {
   }
 
   .current-settings-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .current-settings-url {
+    grid-column: span 2;
   }
 
   .execution-guide-steps {
@@ -1125,6 +1162,10 @@ h2 {
   .current-settings-grid,
   .execution-guide-steps {
     grid-template-columns: 1fr;
+  }
+
+  .current-settings-url {
+    grid-column: auto;
   }
 
   .detail-header {

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>HiTRUST ACS Cloud Auto SIT Tools</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="/static/styles.css?v=20260720-onboarding" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260720-onboarding-collapse" />
   </head>
   <body>
     <header class="app-header">
@@ -29,8 +29,8 @@
           <div><dt>發卡行模式</dt><dd id="currentIssuerMode">SMS OTP</dd></div>
           <div><dt>Challenge 偏好</dt><dd id="currentPreferredChallenge">自動</dd></div>
           <div><dt>語系</dt><dd id="currentWordingLocale">全部語系</dd></div>
-          <div><dt>可執行案例</dt><dd id="currentAvailableCases">0</dd></div>
-          <div><dt>已選取案例</dt><dd id="currentSelectedCases">0</dd></div>
+          <div class="current-settings-url"><dt>ACS URL</dt><dd id="currentAcsUrl">尚未設定</dd></div>
+          <div><dt>目前設定卡號</dt><dd id="currentCardNumber">尚未設定</dd></div>
         </dl>
       </section>
     </header>
@@ -197,23 +197,24 @@
         <div class="case-panel-shell">
           <nav class="case-sidebar" role="tablist" aria-label="SIT 控制">
             <button class="case-sidebar-button active" type="button" role="tab" aria-selected="true" aria-controls="caseExecutionPanel" data-case-view="caseExecutionPanel">執行案例</button>
-            <button class="case-sidebar-button" type="button" role="tab" aria-selected="false" aria-controls="caseSettingsPanel" data-case-view="caseSettingsPanel">設定</button>
             <button class="case-sidebar-button" type="button" role="tab" aria-selected="false" aria-controls="caseAdvancedPanel" data-case-view="caseAdvancedPanel">進階工具</button>
           </nav>
           <div class="case-panel-content">
             <section id="caseExecutionPanel" class="case-control-view active" role="tabpanel">
-        <section id="executionGuide" class="execution-guide" aria-labelledby="executionGuideTitle">
-          <div class="execution-guide-heading">
-            <span class="eyebrow">快速開始</span>
-            <h2 id="executionGuideTitle">開始測試前，請依序完成以下設定</h2>
-          </div>
+        <details id="executionGuide" class="execution-guide" open>
+          <summary class="execution-guide-summary">
+            <span class="execution-guide-heading">
+              <span class="eyebrow">快速開始</span>
+              <strong id="executionGuideTitle">開始測試前，請依序完成以下設定</strong>
+            </span>
+          </summary>
           <ol class="execution-guide-steps">
             <li><strong>前往「設定」</strong><span>確認 AReq URL、發卡行模式、語系、OTP 與測試參數。</span></li>
             <li><strong>選擇測試案例</strong><span>回到執行案例，勾選案例或選擇全部執行。</span></li>
             <li><strong>執行選取案例</strong><span>開始測試並等待所有案例完成。</span></li>
             <li><strong>查看測試結果</strong><span>檢查結果明細，並視需要儲存紀錄或下載報告。</span></li>
           </ol>
-        </section>
+        </details>
         <div class="toolbar">
           <button id="runSelectedCases" class="primary" type="button">執行選取案例</button>
           <button id="runAllCases" type="button">全部執行</button>

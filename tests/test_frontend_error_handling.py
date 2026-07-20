@@ -138,16 +138,18 @@ def test_frontend_imports_wording_profiles_and_disables_unavailable_cases():
     assert "grid-column: 1 / -1" in styles
 
 
-def test_sit_controls_use_execution_and_settings_sidebar():
+def test_sit_controls_use_execution_sidebar_and_header_settings_action():
     index_html = Path("static/index.html").read_text(encoding="utf-8")
     app_js = Path("static/app.js").read_text(encoding="utf-8")
     styles = Path("static/styles.css").read_text(encoding="utf-8")
 
     assert 'data-case-view="caseExecutionPanel"' in index_html
-    assert 'data-case-view="caseSettingsPanel"' in index_html
+    assert 'data-case-view="caseSettingsPanel"' not in index_html
     assert 'data-case-view="caseAdvancedPanel"' in index_html
     assert 'id="caseExecutionPanel"' in index_html
     assert 'id="caseSettingsPanel"' in index_html
+    assert 'id="openCaseSettings"' in index_html
+    assert 'setCaseControlView("caseSettingsPanel")' in app_js
     assert 'id="caseProgressSummary"' not in index_html
     assert "caseImplementation" not in app_js
     assert "function setCaseControlView" in app_js
@@ -381,9 +383,14 @@ def test_execution_guidance_uses_semantic_list_and_existing_visual_language():
     styles = Path("static/styles.css").read_text(encoding="utf-8")
 
     guide = index_html[index_html.index('id="executionGuide"'):]
+    assert '<details id="executionGuide" class="execution-guide" open>' in index_html
+    assert "<summary" in guide
     assert "<ol" in guide
     assert "<li" in guide
     assert ".execution-guide" in styles
+    assert ".execution-guide-summary" in styles
+    assert ".execution-guide-summary::after" in styles
+    assert '.execution-guide:not([open]) .execution-guide-summary::after' in styles
     assert ".execution-guide-steps" in styles
 
 
@@ -396,8 +403,8 @@ def test_header_has_non_sensitive_current_settings_summary():
         'id="currentIssuerMode"',
         'id="currentPreferredChallenge"',
         'id="currentWordingLocale"',
-        'id="currentAvailableCases"',
-        'id="currentSelectedCases"',
+        'id="currentAcsUrl"',
+        'id="currentCardNumber"',
         'id="openCaseSettings"',
     ):
         assert element_id in index_html
@@ -407,8 +414,6 @@ def test_header_has_non_sensitive_current_settings_summary():
         index_html.index("</header>")
     ]
     for sensitive_id in (
-        "sitAreqUrl",
-        "validCardNumber",
         "invalidCardNumber",
         "successOtp",
         "failureOtp",
@@ -427,8 +432,12 @@ def test_current_settings_summary_updates_from_existing_controls_and_case_state(
     assert "currentIssuerModeEl.textContent" in app_js
     assert "currentPreferredChallengeEl.textContent" in app_js
     assert "currentWordingLocaleEl.textContent" in app_js
-    assert "currentAvailableCasesEl.textContent" in app_js
-    assert "currentSelectedCasesEl.textContent" in app_js
+    assert "currentAcsUrlEl.textContent" in app_js
+    assert "currentCardNumberEl.textContent" in app_js
+    assert "currentAvailableCases" not in app_js
+    assert "currentSelectedCases" not in app_js
+    assert 'sitAreqUrlInput?.addEventListener("input", renderCurrentSettingsSummary)' in app_js
+    assert 'validCardNumberInput?.addEventListener("input", renderCurrentSettingsSummary)' in app_js
     assert 'setCaseControlView("caseSettingsPanel")' in app_js
     assert "renderCurrentSettingsSummary();" in app_js
 
@@ -439,7 +448,8 @@ def test_guidance_and_settings_summary_have_responsive_styles():
 
     assert ".current-settings-summary" in styles
     assert ".current-settings-grid" in styles
-    assert "grid-template-columns: repeat(6, minmax(0, 1fr))" in styles
+    assert "grid-template-columns: repeat(4, minmax(0, 1fr))" in styles
+    assert ".current-settings-url" in styles
     guide_rules = styles[
         styles.index(".execution-guide-steps {"):
         styles.index(".execution-guide-steps li {")
@@ -449,6 +459,6 @@ def test_guidance_and_settings_summary_have_responsive_styles():
     assert ".current-settings-grid" in mobile_rules
     assert ".execution-guide-steps" in mobile_rules
     assert "grid-template-columns: 1fr" in mobile_rules
-    assert "/static/styles.css?v=20260720-onboarding" in index_html
+    assert "/static/styles.css?v=20260720-onboarding-collapse" in index_html
     assert "/static/app.js?v=20260720-onboarding" in index_html
     assert '<link rel="icon" href="data:," />' in index_html
