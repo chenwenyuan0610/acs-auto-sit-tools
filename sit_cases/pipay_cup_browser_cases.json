@@ -128,7 +128,7 @@
               "RReq": {
                 "transStatus": "N",
                 "transStatusReason": "19",
-                "eci": "null",
+                "eci": "07",
                 "cavv": "null"
               }
             }

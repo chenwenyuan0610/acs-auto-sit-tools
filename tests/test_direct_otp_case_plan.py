@@ -57,6 +57,25 @@ def test_case03_plan_stops_after_one_max_failure_transaction():
     } == {"failure"}
 
 
+def test_case03_expects_eci_07_after_maximum_otp_failures():
+    case = _case_by_id("case03")
+
+    assert case["expected"]["transactions"] == [
+        {
+            "label": "Transaction",
+            "messages": {
+                "CRes": {"transStatus": "N"},
+                "RReq": {
+                    "transStatus": "N",
+                    "transStatusReason": "19",
+                    "eci": "07",
+                    "cavv": "null",
+                },
+            },
+        }
+    ]
+
+
 def test_customer_generated_otp_uses_configured_success_and_failure_values():
     settings = OtpSettings(
         source_mode="customer_generated",
