@@ -1500,7 +1500,6 @@ async function runSitCases(caseIds) {
       selectCase(caseId);
       renderSitRunSummary(progress.summary);
       renderSitRunDashboard(progress);
-      setCaseControlView("caseResultsPanel");
       setStatus(`案例執行進度 ${progress.summary.completed}/${progress.summary.total}`);
     }
     const summary = currentSitRun?.summary || summarizeSitCaseResults(caseIds, completedResults);

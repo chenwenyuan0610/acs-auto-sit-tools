@@ -340,7 +340,12 @@ def test_sit_run_requests_each_case_sequentially_and_aggregates_progress():
     assert "currentSitRun = progress;" in app_js
     assert "renderSitRunSummary(progress.summary);" in app_js
     assert "selectedCaseIds: [...caseIds]" in app_js
-    assert "/static/app.js?v=20260720-sequential-runs" in index_html
+    run_block = app_js[
+        app_js.index("async function runSitCases(caseIds)"):
+        app_js.index("function refreshAreqTransactionIds")
+    ]
+    assert 'setCaseControlView("caseResultsPanel")' not in run_block
+    assert "/static/app.js?v=20260720-manual-results" in index_html
 
 
 def test_result_dashboard_has_context_actions_history_and_no_bulk_copy():
@@ -492,7 +497,7 @@ def test_sit_settings_are_saved_locally_and_restored_after_async_options_load():
     ):
         assert f'{setting_id}: {setting_id}Input' in app_js
 
-    assert "/static/app.js?v=20260720-sequential-runs" in index_html
+    assert "/static/app.js?v=20260720-manual-results" in index_html
 
 
 def test_guidance_and_settings_summary_have_responsive_styles():
@@ -509,5 +514,5 @@ def test_guidance_and_settings_summary_have_responsive_styles():
     assert "position: fixed" in mobile_rules
     assert "grid-template-columns: 1fr" in mobile_rules
     assert "/static/styles.css?v=20260720-settings-persistence" in index_html
-    assert "/static/app.js?v=20260720-sequential-runs" in index_html
+    assert "/static/app.js?v=20260720-manual-results" in index_html
     assert '<link rel="icon" href="data:," />' in index_html
