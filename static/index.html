@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>HiTRUST ACS Cloud Auto SIT Tools</title>
     <link rel="icon" href="data:," />
-    <link rel="stylesheet" href="/static/styles.css?v=20260720-onboarding-collapse" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260720-header-help" />
   </head>
   <body>
     <header class="app-header">
@@ -22,7 +22,22 @@
       <section id="currentSettingsSummary" class="current-settings-summary" aria-label="目前測試設定">
         <div class="current-settings-title">
           <span class="eyebrow">目前測試設定</span>
-          <button id="openCaseSettings" type="button">前往設定</button>
+          <div class="current-settings-actions">
+            <details id="quickStartHelp" class="quick-start-help">
+              <summary>使用說明</summary>
+              <section class="quick-start-popover" aria-labelledby="quickStartHelpTitle">
+                <span class="eyebrow">快速開始</span>
+                <h2 id="quickStartHelpTitle">開始測試前，請依序完成以下設定</h2>
+                <ol class="quick-start-steps">
+                  <li><strong>前往「設定」</strong><span>確認 AReq URL、發卡行模式、語系、OTP 與測試參數。</span></li>
+                  <li><strong>選擇測試案例</strong><span>回到執行案例，勾選案例或選擇全部執行。</span></li>
+                  <li><strong>執行選取案例</strong><span>開始測試並等待所有案例完成。</span></li>
+                  <li><strong>查看測試結果</strong><span>檢查結果明細，並視需要儲存紀錄或下載報告。</span></li>
+                </ol>
+              </section>
+            </details>
+            <button id="openCaseSettings" type="button">前往設定</button>
+          </div>
         </div>
         <dl class="current-settings-grid">
           <div><dt>發卡行設定</dt><dd id="currentIssuerProfile">預設發卡行</dd></div>
@@ -201,20 +216,6 @@
           </nav>
           <div class="case-panel-content">
             <section id="caseExecutionPanel" class="case-control-view active" role="tabpanel">
-        <details id="executionGuide" class="execution-guide" open>
-          <summary class="execution-guide-summary">
-            <span class="execution-guide-heading">
-              <span class="eyebrow">快速開始</span>
-              <strong id="executionGuideTitle">開始測試前，請依序完成以下設定</strong>
-            </span>
-          </summary>
-          <ol class="execution-guide-steps">
-            <li><strong>前往「設定」</strong><span>確認 AReq URL、發卡行模式、語系、OTP 與測試參數。</span></li>
-            <li><strong>選擇測試案例</strong><span>回到執行案例，勾選案例或選擇全部執行。</span></li>
-            <li><strong>執行選取案例</strong><span>開始測試並等待所有案例完成。</span></li>
-            <li><strong>查看測試結果</strong><span>檢查結果明細，並視需要儲存紀錄或下載報告。</span></li>
-          </ol>
-        </details>
         <div class="toolbar">
           <button id="runSelectedCases" class="primary" type="button">執行選取案例</button>
           <button id="runAllCases" type="button">全部執行</button>
@@ -420,6 +421,6 @@
       </section>
     </main>
 
-    <script src="/static/app.js?v=20260720-onboarding"></script>
+    <script src="/static/app.js?v=20260720-header-help"></script>
   </body>
 </html>

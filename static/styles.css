@@ -58,6 +58,12 @@ body {
   padding: 0 12px;
 }
 
+.current-settings-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
 .current-settings-grid {
   display: grid;
   gap: 8px;
@@ -132,62 +138,58 @@ p {
   letter-spacing: 0.08em;
 }
 
-.execution-guide {
-  background: linear-gradient(135deg, var(--panel), var(--bg));
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  display: grid;
-  gap: 16px;
-  margin-bottom: 18px;
-  padding: 18px;
+.quick-start-help {
+  position: relative;
 }
 
-.execution-guide-summary {
+.quick-start-help > summary {
   align-items: center;
+  background: #f6f8f9;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
   cursor: pointer;
   display: flex;
-  gap: 16px;
-  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 600;
+  min-height: 32px;
+  padding: 0 12px;
   list-style: none;
 }
 
-.execution-guide-summary::-webkit-details-marker {
+.quick-start-help > summary::-webkit-details-marker {
   display: none;
 }
 
-.execution-guide-heading {
-  display: grid;
-  gap: 4px;
+.quick-start-popover {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 14px 36px rgba(27, 35, 41, 0.18);
+  padding: 18px;
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: min(380px, calc(100vw - 32px));
+  z-index: 30;
 }
 
-.execution-guide-heading strong {
+.quick-start-popover h2 {
   font-size: 18px;
+  margin: 4px 0 14px;
 }
 
-.execution-guide-summary::after {
-  color: var(--primary-dark);
-  content: "收合";
-  flex-shrink: 0;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.execution-guide:not([open]) .execution-guide-summary::after {
-  content: "展開";
-}
-
-.execution-guide-steps {
+.quick-start-steps {
   counter-reset: guide-step;
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.execution-guide-steps li {
-  background: var(--panel);
+.quick-start-steps li {
+  background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 8px;
   counter-increment: guide-step;
@@ -197,7 +199,7 @@ p {
   padding: 12px;
 }
 
-.execution-guide-steps li::before {
+.quick-start-steps li::before {
   background: var(--primary);
   border-radius: 999px;
   color: #ffffff;
@@ -209,7 +211,7 @@ p {
   width: 24px;
 }
 
-.execution-guide-steps span {
+.quick-start-steps span {
   color: var(--muted);
   line-height: 1.5;
 }
@@ -1141,9 +1143,6 @@ h2 {
     grid-column: span 2;
   }
 
-  .execution-guide-steps {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 480px) {
@@ -1156,12 +1155,26 @@ h2 {
   .app-header-actions {
     justify-content: space-between;
   }
+
+  .current-settings-actions {
+    justify-content: space-between;
+  }
 }
 
 @media (max-width: 600px) {
-  .current-settings-grid,
-  .execution-guide-steps {
+  .current-settings-grid {
     grid-template-columns: 1fr;
+  }
+
+  .quick-start-popover {
+    bottom: 12px;
+    left: 12px;
+    max-height: calc(100vh - 24px);
+    overflow: auto;
+    position: fixed;
+    right: 12px;
+    top: auto;
+    width: auto;
   }
 
   .current-settings-url {

@@ -72,6 +72,7 @@ const currentWordingLocaleEl = document.querySelector("#currentWordingLocale");
 const currentAcsUrlEl = document.querySelector("#currentAcsUrl");
 const currentCardNumberEl = document.querySelector("#currentCardNumber");
 const openCaseSettingsButton = document.querySelector("#openCaseSettings");
+const quickStartHelpEl = document.querySelector("#quickStartHelp");
 
 let evidence = [];
 let sitCases = [];
@@ -1352,6 +1353,20 @@ caseViewButtons.forEach((button) => {
 
 openCaseSettingsButton?.addEventListener("click", () => {
   setCaseControlView("caseSettingsPanel");
+});
+
+document.addEventListener("click", (event) => {
+  if (!quickStartHelpEl?.open || quickStartHelpEl.contains(event.target)) {
+    return;
+  }
+  quickStartHelpEl.open = false;
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && quickStartHelpEl?.open) {
+    quickStartHelpEl.open = false;
+    quickStartHelpEl.querySelector("summary")?.focus();
+  }
 });
 
 saveSitRunButton?.addEventListener("click", async () => {

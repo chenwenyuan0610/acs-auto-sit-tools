@@ -361,13 +361,14 @@ def test_result_dashboard_has_context_actions_history_and_no_bulk_copy():
     assert ".acs-trans-id-copy" in styles
 
 
-def test_frontend_has_hitrust_branding_and_execution_guidance():
+def test_frontend_has_hitrust_branding_and_header_quick_start_help():
     index_html = Path("static/index.html").read_text(encoding="utf-8")
 
     assert "<title>HiTRUST ACS Cloud Auto SIT Tools</title>" in index_html
     assert "<h1>HiTRUST ACS Cloud Auto SIT Tools</h1>" in index_html
     assert "模擬 ACS 自動化測試交易工具" in index_html
-    assert 'id="executionGuide"' in index_html
+    assert 'id="quickStartHelp"' in index_html
+    assert "使用說明" in index_html
     assert "開始測試前，請依序完成以下設定" in index_html
     for guidance in (
         "前往「設定」",
@@ -378,20 +379,23 @@ def test_frontend_has_hitrust_branding_and_execution_guidance():
         assert guidance in index_html
 
 
-def test_execution_guidance_uses_semantic_list_and_existing_visual_language():
+def test_quick_start_help_uses_header_popover_and_semantic_list():
     index_html = Path("static/index.html").read_text(encoding="utf-8")
+    app_js = Path("static/app.js").read_text(encoding="utf-8")
     styles = Path("static/styles.css").read_text(encoding="utf-8")
 
-    guide = index_html[index_html.index('id="executionGuide"'):]
-    assert '<details id="executionGuide" class="execution-guide" open>' in index_html
-    assert "<summary" in guide
-    assert "<ol" in guide
-    assert "<li" in guide
-    assert ".execution-guide" in styles
-    assert ".execution-guide-summary" in styles
-    assert ".execution-guide-summary::after" in styles
-    assert '.execution-guide:not([open]) .execution-guide-summary::after' in styles
-    assert ".execution-guide-steps" in styles
+    header = index_html[index_html.index("<header"):index_html.index("</header>")]
+    assert '<details id="quickStartHelp"' in header
+    assert "<summary>使用說明</summary>" in header
+    assert 'class="quick-start-popover"' in header
+    assert "<ol" in header
+    assert "<li" in header
+    assert 'id="executionGuide"' not in index_html
+    assert ".execution-guide" not in styles
+    assert ".quick-start-help" in styles
+    assert ".quick-start-popover" in styles
+    assert "quickStartHelpEl.contains(event.target)" in app_js
+    assert 'event.key === "Escape"' in app_js
 
 
 def test_header_has_non_sensitive_current_settings_summary():
@@ -450,15 +454,11 @@ def test_guidance_and_settings_summary_have_responsive_styles():
     assert ".current-settings-grid" in styles
     assert "grid-template-columns: repeat(4, minmax(0, 1fr))" in styles
     assert ".current-settings-url" in styles
-    guide_rules = styles[
-        styles.index(".execution-guide-steps {"):
-        styles.index(".execution-guide-steps li {")
-    ]
-    assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in guide_rules
     mobile_rules = styles[styles.index("@media (max-width: 600px)"):]
     assert ".current-settings-grid" in mobile_rules
-    assert ".execution-guide-steps" in mobile_rules
+    assert ".quick-start-popover" in mobile_rules
+    assert "position: fixed" in mobile_rules
     assert "grid-template-columns: 1fr" in mobile_rules
-    assert "/static/styles.css?v=20260720-onboarding-collapse" in index_html
-    assert "/static/app.js?v=20260720-onboarding" in index_html
+    assert "/static/styles.css?v=20260720-header-help" in index_html
+    assert "/static/app.js?v=20260720-header-help" in index_html
     assert '<link rel="icon" href="data:," />' in index_html
