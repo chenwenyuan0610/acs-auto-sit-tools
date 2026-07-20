@@ -357,3 +357,31 @@ def test_result_dashboard_has_context_actions_history_and_no_bulk_copy():
     assert ".run-metrics" in styles
     assert ".result-table" in styles
     assert ".acs-trans-id-copy" in styles
+
+
+def test_frontend_has_hitrust_branding_and_execution_guidance():
+    index_html = Path("static/index.html").read_text(encoding="utf-8")
+
+    assert "<title>HiTRUST ACS Cloud Auto SIT Tools</title>" in index_html
+    assert "<h1>HiTRUST ACS Cloud Auto SIT Tools</h1>" in index_html
+    assert "模擬 ACS 自動化測試交易工具" in index_html
+    assert 'id="executionGuide"' in index_html
+    assert "開始測試前，請依序完成以下設定" in index_html
+    for guidance in (
+        "前往「設定」",
+        "選擇測試案例",
+        "執行選取案例",
+        "查看測試結果",
+    ):
+        assert guidance in index_html
+
+
+def test_execution_guidance_uses_semantic_list_and_existing_visual_language():
+    index_html = Path("static/index.html").read_text(encoding="utf-8")
+    styles = Path("static/styles.css").read_text(encoding="utf-8")
+
+    guide = index_html[index_html.index('id="executionGuide"'):]
+    assert "<ol" in guide
+    assert "<li" in guide
+    assert ".execution-guide" in styles
+    assert ".execution-guide-steps" in styles

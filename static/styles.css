@@ -65,6 +65,75 @@ p {
   margin: 4px 0 0;
 }
 
+.app-branding h1,
+.app-branding p {
+  margin: 0;
+}
+
+.app-branding p {
+  margin-top: 4px;
+}
+
+.eyebrow {
+  color: var(--primary-dark);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.execution-guide {
+  background: linear-gradient(135deg, var(--panel), var(--bg));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  gap: 16px;
+  margin-bottom: 18px;
+  padding: 18px;
+}
+
+.execution-guide-heading h2 {
+  font-size: 18px;
+  margin: 4px 0 0;
+}
+
+.execution-guide-steps {
+  counter-reset: guide-step;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.execution-guide-steps li {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  counter-increment: guide-step;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.execution-guide-steps li::before {
+  background: var(--primary);
+  border-radius: 999px;
+  color: #ffffff;
+  content: counter(guide-step);
+  display: grid;
+  font-weight: 700;
+  height: 24px;
+  place-items: center;
+  width: 24px;
+}
+
+.execution-guide-steps span {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .status-pill {
   background: #eef7f6;
   border: 1px solid #b9d8d5;

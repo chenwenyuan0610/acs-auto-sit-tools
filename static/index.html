@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ACS Auto SIT</title>
+    <title>HiTRUST ACS Cloud Auto SIT Tools</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <header class="app-header">
-      <div>
-        <h1>ACS Auto SIT</h1>
-        <p>3DS 瀏覽器 AReq / CReq POST 測試工具</p>
+      <div class="app-branding">
+        <h1>HiTRUST ACS Cloud Auto SIT Tools</h1>
+        <p>模擬 ACS 自動化測試交易工具</p>
       </div>
       <div class="app-header-actions">
         <button class="header-results-button" type="button" role="tab" aria-selected="false" aria-controls="caseResultsPanel" data-case-view="caseResultsPanel">測試結果</button>
@@ -185,6 +185,18 @@
           </nav>
           <div class="case-panel-content">
             <section id="caseExecutionPanel" class="case-control-view active" role="tabpanel">
+        <section id="executionGuide" class="execution-guide" aria-labelledby="executionGuideTitle">
+          <div class="execution-guide-heading">
+            <span class="eyebrow">快速開始</span>
+            <h2 id="executionGuideTitle">開始測試前，請依序完成以下設定</h2>
+          </div>
+          <ol class="execution-guide-steps">
+            <li><strong>前往「設定」</strong><span>確認 AReq URL、發卡行模式、語系、OTP 與測試參數。</span></li>
+            <li><strong>選擇測試案例</strong><span>回到執行案例，勾選案例或選擇全部執行。</span></li>
+            <li><strong>執行選取案例</strong><span>開始測試並等待所有案例完成。</span></li>
+            <li><strong>查看測試結果</strong><span>檢查結果明細，並視需要儲存紀錄或下載報告。</span></li>
+          </ol>
+        </section>
         <div class="toolbar">
           <button id="runSelectedCases" class="primary" type="button">執行選取案例</button>
           <button id="runAllCases" type="button">全部執行</button>
