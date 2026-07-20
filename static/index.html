@@ -8,14 +8,30 @@
   </head>
   <body>
     <header class="app-header">
-      <div class="app-branding">
-        <h1>HiTRUST ACS Cloud Auto SIT Tools</h1>
-        <p>模擬 ACS 自動化測試交易工具</p>
+      <div class="app-header-row">
+        <div class="app-branding">
+          <h1>HiTRUST ACS Cloud Auto SIT Tools</h1>
+          <p>模擬 ACS 自動化測試交易工具</p>
+        </div>
+        <div class="app-header-actions">
+          <button class="header-results-button" type="button" role="tab" aria-selected="false" aria-controls="caseResultsPanel" data-case-view="caseResultsPanel">測試結果</button>
+          <div id="status" class="status-pill">待命</div>
+        </div>
       </div>
-      <div class="app-header-actions">
-        <button class="header-results-button" type="button" role="tab" aria-selected="false" aria-controls="caseResultsPanel" data-case-view="caseResultsPanel">測試結果</button>
-        <div id="status" class="status-pill">待命</div>
-      </div>
+      <section id="currentSettingsSummary" class="current-settings-summary" aria-label="目前測試設定">
+        <div class="current-settings-title">
+          <span class="eyebrow">目前測試設定</span>
+          <button id="openCaseSettings" type="button">前往設定</button>
+        </div>
+        <dl class="current-settings-grid">
+          <div><dt>發卡行設定</dt><dd id="currentIssuerProfile">預設發卡行</dd></div>
+          <div><dt>發卡行模式</dt><dd id="currentIssuerMode">SMS OTP</dd></div>
+          <div><dt>Challenge 偏好</dt><dd id="currentPreferredChallenge">自動</dd></div>
+          <div><dt>語系</dt><dd id="currentWordingLocale">全部語系</dd></div>
+          <div><dt>可執行案例</dt><dd id="currentAvailableCases">0</dd></div>
+          <div><dt>已選取案例</dt><dd id="currentSelectedCases">0</dd></div>
+        </dl>
+      </section>
     </header>
 
     <section id="caseAdvancedPanel" class="workspace case-control-view advanced-tools-view" role="tabpanel" hidden>

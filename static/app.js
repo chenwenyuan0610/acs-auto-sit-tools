@@ -65,6 +65,13 @@ const caseDiffOutput = document.querySelector("#caseDiffOutput");
 const caseRequestTimeline = document.querySelector("#caseRequestTimeline");
 const caseHtmlPreview = document.querySelector("#caseHtmlPreview");
 const caseRunOutput = document.querySelector("#caseRunOutput");
+const currentIssuerProfileEl = document.querySelector("#currentIssuerProfile");
+const currentIssuerModeEl = document.querySelector("#currentIssuerMode");
+const currentPreferredChallengeEl = document.querySelector("#currentPreferredChallenge");
+const currentWordingLocaleEl = document.querySelector("#currentWordingLocale");
+const currentAvailableCasesEl = document.querySelector("#currentAvailableCases");
+const currentSelectedCasesEl = document.querySelector("#currentSelectedCases");
+const openCaseSettingsButton = document.querySelector("#openCaseSettings");
 
 let evidence = [];
 let sitCases = [];
@@ -994,6 +1001,35 @@ function selectedIssuerMode() {
   return issuerModes.find((mode) => mode.id === issuerModeInput?.value) || null;
 }
 
+function selectedOptionLabel(select, fallback) {
+  return select?.selectedOptions?.[0]?.textContent?.trim() || fallback;
+}
+
+function renderCurrentSettingsSummary() {
+  const mode = selectedIssuerMode();
+  const availableCount = sitCases.filter((caseItem) => caseItem.availability?.enabled !== false).length;
+  const selectedCount = checkedCaseIds().length;
+
+  if (currentIssuerProfileEl) {
+    currentIssuerProfileEl.textContent = selectedOptionLabel(issuerProfileInput, "預設發卡行");
+  }
+  if (currentIssuerModeEl) {
+    currentIssuerModeEl.textContent = mode ? issuerModeLabel(mode) : selectedOptionLabel(issuerModeInput, "SMS OTP");
+  }
+  if (currentPreferredChallengeEl) {
+    currentPreferredChallengeEl.textContent = selectedOptionLabel(preferredChallengeInput, "自動");
+  }
+  if (currentWordingLocaleEl) {
+    currentWordingLocaleEl.textContent = selectedOptionLabel(wordingLocaleInput, "全部語系");
+  }
+  if (currentAvailableCasesEl) {
+    currentAvailableCasesEl.textContent = String(availableCount);
+  }
+  if (currentSelectedCasesEl) {
+    currentSelectedCasesEl.textContent = String(selectedCount);
+  }
+}
+
 function preferredChallengeAllowed(mode, value) {
   if (!mode || value === "auto") {
     return true;
@@ -1111,11 +1147,13 @@ function setCaseCheckboxes(checked) {
 function updateSelectAllState() {
   const checks = Array.from(document.querySelectorAll(".case-check:not(:disabled)"));
   if (!selectAllCasesInput || checks.length === 0) {
+    renderCurrentSettingsSummary();
     return;
   }
   const checked = checks.filter((input) => input.checked).length;
   selectAllCasesInput.checked = checked === checks.length;
   selectAllCasesInput.indeterminate = checked > 0 && checked < checks.length;
+  renderCurrentSettingsSummary();
 }
 
 async function loadSitCases() {
@@ -1314,6 +1352,10 @@ caseViewButtons.forEach((button) => {
   button.addEventListener("click", () => setCaseControlView(button.dataset.caseView));
 });
 
+openCaseSettingsButton?.addEventListener("click", () => {
+  setCaseControlView("caseSettingsPanel");
+});
+
 saveSitRunButton?.addEventListener("click", async () => {
   if (!currentSitRun) {
     return;
@@ -1440,6 +1482,7 @@ async function initializeSitRunner() {
   await loadSavedRuns();
 }
 
+renderCurrentSettingsSummary();
 initializeSitRunner();
 renderSitRunSummary(null);
 renderSitRunDashboard(null);

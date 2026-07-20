@@ -385,3 +385,49 @@ def test_execution_guidance_uses_semantic_list_and_existing_visual_language():
     assert "<li" in guide
     assert ".execution-guide" in styles
     assert ".execution-guide-steps" in styles
+
+
+def test_header_has_non_sensitive_current_settings_summary():
+    index_html = Path("static/index.html").read_text(encoding="utf-8")
+
+    for element_id in (
+        'id="currentSettingsSummary"',
+        'id="currentIssuerProfile"',
+        'id="currentIssuerMode"',
+        'id="currentPreferredChallenge"',
+        'id="currentWordingLocale"',
+        'id="currentAvailableCases"',
+        'id="currentSelectedCases"',
+        'id="openCaseSettings"',
+    ):
+        assert element_id in index_html
+
+    summary = index_html[
+        index_html.index('id="currentSettingsSummary"'):
+        index_html.index("</header>")
+    ]
+    for sensitive_id in (
+        "sitAreqUrl",
+        "validCardNumber",
+        "invalidCardNumber",
+        "successOtp",
+        "failureOtp",
+        "otpLookupUrl",
+        "transactionResultUrl",
+    ):
+        assert sensitive_id not in summary
+
+
+def test_current_settings_summary_updates_from_existing_controls_and_case_state():
+    app_js = Path("static/app.js").read_text(encoding="utf-8")
+
+    assert "function selectedOptionLabel" in app_js
+    assert "function renderCurrentSettingsSummary" in app_js
+    assert "currentIssuerProfileEl.textContent" in app_js
+    assert "currentIssuerModeEl.textContent" in app_js
+    assert "currentPreferredChallengeEl.textContent" in app_js
+    assert "currentWordingLocaleEl.textContent" in app_js
+    assert "currentAvailableCasesEl.textContent" in app_js
+    assert "currentSelectedCasesEl.textContent" in app_js
+    assert 'setCaseControlView("caseSettingsPanel")' in app_js
+    assert "renderCurrentSettingsSummary();" in app_js
