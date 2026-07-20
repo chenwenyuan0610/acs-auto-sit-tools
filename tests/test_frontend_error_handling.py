@@ -431,3 +431,24 @@ def test_current_settings_summary_updates_from_existing_controls_and_case_state(
     assert "currentSelectedCasesEl.textContent" in app_js
     assert 'setCaseControlView("caseSettingsPanel")' in app_js
     assert "renderCurrentSettingsSummary();" in app_js
+
+
+def test_guidance_and_settings_summary_have_responsive_styles():
+    index_html = Path("static/index.html").read_text(encoding="utf-8")
+    styles = Path("static/styles.css").read_text(encoding="utf-8")
+
+    assert ".current-settings-summary" in styles
+    assert ".current-settings-grid" in styles
+    assert "grid-template-columns: repeat(6, minmax(0, 1fr))" in styles
+    guide_rules = styles[
+        styles.index(".execution-guide-steps {"):
+        styles.index(".execution-guide-steps li {")
+    ]
+    assert "grid-template-columns: repeat(2, minmax(0, 1fr))" in guide_rules
+    mobile_rules = styles[styles.index("@media (max-width: 600px)"):]
+    assert ".current-settings-grid" in mobile_rules
+    assert ".execution-guide-steps" in mobile_rules
+    assert "grid-template-columns: 1fr" in mobile_rules
+    assert "/static/styles.css?v=20260720-onboarding" in index_html
+    assert "/static/app.js?v=20260720-onboarding" in index_html
+    assert '<link rel="icon" href="data:," />' in index_html

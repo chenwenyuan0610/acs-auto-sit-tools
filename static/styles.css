@@ -23,19 +23,66 @@ body {
 }
 
 .app-header {
-  align-items: center;
   background: #ffffff;
   border-bottom: 1px solid var(--line);
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  gap: 14px;
   min-height: 72px;
   padding: 14px 24px;
+}
+
+.app-header-row,
+.current-settings-title {
+  align-items: center;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
 }
 
 .app-header-actions {
   align-items: center;
   display: flex;
   gap: 10px;
+}
+
+.current-settings-summary {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding-top: 12px;
+}
+
+.current-settings-title button {
+  min-height: 32px;
+  padding: 0 12px;
+}
+
+.current-settings-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  margin: 0;
+}
+
+.current-settings-grid div {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+  padding: 9px 11px;
+}
+
+.current-settings-grid dt {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.current-settings-grid dd {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
 }
 
 .header-results-button {
@@ -100,7 +147,7 @@ p {
   counter-reset: guide-step;
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   list-style: none;
   margin: 0;
   padding: 0;
@@ -1052,10 +1099,19 @@ h2 {
   .app-header-actions {
     flex-shrink: 0;
   }
+
+  .current-settings-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .execution-guide-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 480px) {
-  .app-header {
+  .app-header-row,
+  .current-settings-title {
     align-items: stretch;
     flex-direction: column;
   }
@@ -1066,6 +1122,11 @@ h2 {
 }
 
 @media (max-width: 600px) {
+  .current-settings-grid,
+  .execution-guide-steps {
+    grid-template-columns: 1fr;
+  }
+
   .detail-header {
     flex-direction: column;
   }
